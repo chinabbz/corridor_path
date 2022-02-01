@@ -62,7 +62,7 @@ def generate_launch_description():
 
     declare_map_yaml_cmd = DeclareLaunchArgument(
         'map',
-        default_value=os.path.join(bringup_dir, 'maps', 'huahong.yaml'),
+        default_value=os.path.join(os.getcwd(), 'src/nav2_bringup/bringup/maps/huahong.yaml'),
         # default_value=os.path.join(bringup_dir, 'maps', 'turtlebot3_world.yaml'),
         # default_value=os.path.join(bringup_dir, 'maps', 'test.yaml'),
         description='Full path to map file to load')
@@ -90,15 +90,6 @@ def generate_launch_description():
         'use_rviz',
         default_value='True',
         description='Whether to start RVIZ')
-
-    declare_world_cmd = DeclareLaunchArgument(
-        'world',
-        # TODO(orduno) Switch back once ROS argument passing has been fixed upstream
-        #              https://github.com/ROBOTIS-GIT/turtlebot3_simulations/issues/91
-        # default_value=os.path.join(get_package_share_directory('turtlebot3_gazebo'),
-        # worlds/turtlebot3_worlds/waffle.model')
-        default_value=os.path.join(bringup_dir, 'worlds', 'waffle.model'),
-        description='Full path to world model file to load')
 
     rviz_cmd = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(launch_dir, 'rviz_launch.py')),
@@ -134,7 +125,6 @@ def generate_launch_description():
 
     ld.add_action(declare_rviz_config_file_cmd)
     ld.add_action(declare_use_rviz_cmd)
-    ld.add_action(declare_world_cmd)
 
     ld.add_action(rviz_cmd)
     ld.add_action(bringup_cmd)
