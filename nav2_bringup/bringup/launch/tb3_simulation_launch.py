@@ -38,6 +38,7 @@ def generate_launch_description():
     map_yaml_file = LaunchConfiguration('map')
     use_sim_time = LaunchConfiguration('use_sim_time')
     params_file = LaunchConfiguration('params_file')
+    txt_file = LaunchConfiguration('txt_file')
     autostart = LaunchConfiguration('autostart')
 
     # Launch configuration variables specific to simulation
@@ -77,6 +78,11 @@ def generate_launch_description():
         default_value=os.path.join(bringup_dir, 'params', 'nav2_params.yaml'),
         description='Full path to the ROS2 parameters file to use for all launched nodes')
 
+    declare_txt_file_cmd = DeclareLaunchArgument(
+        'txt_file',
+        default_value=os.path.join(bringup_dir, 'params', 'task9.txt'),
+        description='Full path to the contest txt file')
+
     declare_autostart_cmd = DeclareLaunchArgument(
         'autostart', default_value='true',
         description='Automatically startup the nav2 stack')
@@ -105,6 +111,7 @@ def generate_launch_description():
                           'map': map_yaml_file,
                           'use_sim_time': use_sim_time,
                           'params_file': params_file,
+                          'txt_file': txt_file,
                           'autostart': autostart}.items())
 
     fake_node_cmd = IncludeLaunchDescription(
@@ -121,6 +128,7 @@ def generate_launch_description():
     ld.add_action(declare_map_yaml_cmd)
     ld.add_action(declare_use_sim_time_cmd)
     ld.add_action(declare_params_file_cmd)
+    ld.add_action(declare_txt_file_cmd)
     ld.add_action(declare_autostart_cmd)
 
     ld.add_action(declare_rviz_config_file_cmd)

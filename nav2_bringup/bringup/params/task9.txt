@@ -1,6 +1,6 @@
 {
-‘Start’：{‘x’:0.1m ‘y’:0.1m ‘heading’:0.22rad}，
-‘Target’：{‘x’:100.1m ‘y’:100.1m ‘heading’:-0.22rad}，
+‘Start’：{‘x’:0.1m ‘y’:0.1m ‘heading’:0.22rad},
+‘Target’：{‘x’:100.1m ‘y’:100.1m ‘heading’:-0.22rad},
 ‘Max_SteerAngle’: 40度
 ‘W’:1.69m 
 ‘L’:4.07m 

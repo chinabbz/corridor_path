@@ -54,7 +54,7 @@ void SmacPlannerHybrid::configure(const rclcpp_lifecycle::LifecycleNode::WeakPtr
 
     int angle_quantizations;
 
-    // General planner params
+    // 从params.yaml中读取参数
     nav2_util::declare_parameter_if_not_declared(node, name + ".downsample_costmap", rclcpp::ParameterValue(false));
     node->get_parameter(name + ".downsample_costmap", _downsample_costmap);
     nav2_util::declare_parameter_if_not_declared(node, name + ".downsampling_factor", rclcpp::ParameterValue(1));
@@ -108,6 +108,21 @@ void SmacPlannerHybrid::configure(const rclcpp_lifecycle::LifecycleNode::WeakPtr
                     "disabling maximum iterations.");
         _max_iterations = std::numeric_limits<int>::max();
     }
+
+    // Get parameters from json
+    double W, L, Threading, Rmin;
+    int Max_SteerAngle;
+
+    node->declare_parameter<int>("Max_SteerAngle");
+    node->declare_parameter<double>("W");
+    node->declare_parameter<double>("L");
+    node->declare_parameter<double>("Theading");
+    node->declare_parameter<double>("Rmid");
+    node->get_parameter_or<int>("Max_SteerAngle", Max_SteerAngle, 40);
+    node->get_parameter_or<double>("W", W, 1.69);
+    node->get_parameter_or<double>("L", L, 4.07);
+    node->get_parameter_or<double>("Theading", Threading, 0.125);
+    node->get_parameter_or<double>("Rmid", Rmin, 6.0);
 
     // convert to grid coordinates
     if (!_downsample_costmap) {

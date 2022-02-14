@@ -15,6 +15,7 @@
 # Author: Ryan Shim
 
 import os
+import json
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
@@ -25,8 +26,6 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
-TURTLEBOT3_MODEL = os.environ['TURTLEBOT3_MODEL']
-
 
 def generate_launch_description():
     param_dir = LaunchConfiguration(
@@ -34,7 +33,7 @@ def generate_launch_description():
         default=os.path.join(
             get_package_share_directory('turtlebot3_fake_node'),
             'param',
-            TURTLEBOT3_MODEL + '.yaml'))
+            'waffle.yaml'))
 
     rviz_dir = LaunchConfiguration(
         'rviz_dir',
@@ -42,12 +41,17 @@ def generate_launch_description():
             get_package_share_directory('turtlebot3_fake_node'), 'launch'))
 
     use_sim_time = LaunchConfiguration('use_sim_time', default='false')
-    urdf_file_name = 'turtlebot3_' + TURTLEBOT3_MODEL + '.urdf'
+    urdf_file_name = 'turtlebot3_waffle' + '.urdf'
 
     urdf = os.path.join(
         get_package_share_directory('turtlebot3_gazebo'),
         'urdf',
         urdf_file_name)
+
+    bringup_dir = get_package_share_directory('nav2_bringup')
+    f = open(os.path.join(bringup_dir, 'params', 'task9.json'))
+    task_params = json.load(f)
+    start_params= task_params["Start"]
 
     return LaunchDescription([
         LogInfo(msg=['Execute Turtlebot3 Fake Node!!']),
@@ -63,7 +67,7 @@ def generate_launch_description():
         Node(
             package='turtlebot3_fake_node',
             executable='turtlebot3_fake_node',
-            parameters=[param_dir],
+            parameters=[param_dir, start_params],
             output='screen'),
 
         Node(

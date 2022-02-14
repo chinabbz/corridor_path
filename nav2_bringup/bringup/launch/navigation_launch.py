@@ -21,6 +21,8 @@ from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from nav2_common.launch import RewrittenYaml
+from rosidl_generator_py import import_type_support
+import json
 
 
 def generate_launch_description():
@@ -58,6 +60,9 @@ def generate_launch_description():
             param_rewrites=param_substitutions,
             convert_types=True)
 
+    f = open(os.path.join(bringup_dir, 'params', 'task9.json'))
+    task_params = json.load(f)
+
     return LaunchDescription([
         # Set env var to print messages to stdout immediately
         SetEnvironmentVariable('RCUTILS_LOGGING_BUFFERED_STREAM', '1'),
@@ -88,7 +93,7 @@ def generate_launch_description():
             executable='planner_server',
             name='planner_server',
             output='screen',
-            parameters=[configured_params],
+            parameters=[configured_params, task_params],
             remappings=remappings),
         
         Node(
