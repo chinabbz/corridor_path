@@ -13,7 +13,6 @@ void topic_callback(const nav_msgs::msg::Path::SharedPtr msg) {
 }
 int main(int argc, char** argv) {
     rclcpp::init(argc, argv);
-    sleep(8);
 
     auto node = std::make_shared<rclcpp::Node>("goal_pub");
 
@@ -42,7 +41,7 @@ int main(int argc, char** argv) {
         rclcpp::spin_some(node);
         sleep(1);
     }
-    RCLCPP_INFO(node->get_logger(), "goal has sent %lf, %lf", goal.pose.position.x, goal.pose.position.x);
+    RCLCPP_INFO(node->get_logger(), "goal has sent %lf, %lf", goal.pose.position.x, goal.pose.position.y);
     rclcpp::shutdown();
 
     return 0;

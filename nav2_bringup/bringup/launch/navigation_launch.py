@@ -122,12 +122,6 @@ def generate_launch_description():
                         {'autostart': autostart},
                         {'node_names': lifecycle_nodes}]),
         
-        Node(
-            package='nav2_planner',
-            executable='goal_sender',
-            name='goal_sender',
-            output='screen',
-            parameters=[configured_params, target_params],
-            remappings=remappings),
+        
 
     ])
