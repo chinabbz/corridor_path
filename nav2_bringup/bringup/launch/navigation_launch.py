@@ -60,8 +60,9 @@ def generate_launch_description():
             param_rewrites=param_substitutions,
             convert_types=True)
 
-    f = open(os.path.join(bringup_dir, 'params', 'task9.json'))
+    f = open(os.path.join(os.getcwd(), 'task9/task9.json'),)
     task_params = json.load(f)
+    target_params= task_params["Target"]
 
     return LaunchDescription([
         # Set env var to print messages to stdout immediately
@@ -120,5 +121,13 @@ def generate_launch_description():
             parameters=[{'use_sim_time': use_sim_time},
                         {'autostart': autostart},
                         {'node_names': lifecycle_nodes}]),
+        
+        Node(
+            package='nav2_planner',
+            executable='goal_sender',
+            name='goal_sender',
+            output='screen',
+            parameters=[configured_params, target_params],
+            remappings=remappings),
 
     ])

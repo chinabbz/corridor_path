@@ -63,7 +63,7 @@ def generate_launch_description():
 
     declare_map_yaml_cmd = DeclareLaunchArgument(
         'map',
-        default_value=os.path.join(os.getcwd(), 'src/nav2_bringup/bringup/maps/huahong.yaml'),
+        default_value=os.path.join(os.getcwd(), 'task9/map.yaml'),
         # default_value=os.path.join(bringup_dir, 'maps', 'turtlebot3_world.yaml'),
         # default_value=os.path.join(bringup_dir, 'maps', 'test.yaml'),
         description='Full path to map file to load')
@@ -80,7 +80,7 @@ def generate_launch_description():
 
     declare_txt_file_cmd = DeclareLaunchArgument(
         'txt_file',
-        default_value=os.path.join(bringup_dir, 'params', 'task9.txt'),
+        default_value=os.path.join(os.getcwd(), 'task9/task9.txt'),
         description='Full path to the contest txt file')
 
     declare_autostart_cmd = DeclareLaunchArgument(

@@ -70,7 +70,7 @@ void HybridMotionTable::initDubin(unsigned int &size_x_in, unsigned int & /*size
     min_turning_radius = search_info.minimum_turning_radius;
     motion_model = MotionModel::DUBIN;
 
-    // 角度必须满足3个要求：
+    // 角度必须满足3个要求:
     // 1) 是根据量化的bin大小递增的
     // 2) 弦长(chord length)必须大于sqrt（2）才能离开当前单元格
     // 3) 必须考虑最大曲率，以最小转角表示 maximum curvature must be respected, represented by minimum turning angle
@@ -98,10 +98,10 @@ void HybridMotionTable::initDubin(unsigned int &size_x_in, unsigned int & /*size
     // find deflections
     // If we make a right triangle out of the chord in circle of radius
     // min turning angle, we can see that delta X = R * sin (angle)
-    float delta_x = min_turning_radius * sin(angle);
+    float delta_x = min_turning_radius * sin(angle) / 2.0;
     // Using that same right triangle, we can see that the complement
     // to delta Y is R * cos (angle). If we subtract R, we get the actual value
-    float delta_y = min_turning_radius - (min_turning_radius * cos(angle));
+    float delta_y = min_turning_radius - (min_turning_radius * cos(angle)) / 2.0;
 
     projections.clear();
     projections.reserve(3);
@@ -164,7 +164,7 @@ void HybridMotionTable::initReedsShepp(unsigned int &size_x_in, unsigned int & /
     } else {
         increments = ceil(angle / bin_size);
     }
-    angle = increments * bin_size;
+    angle = increments * bin_size / 2.0;
 
     float delta_x = min_turning_radius * sin(angle);
     float delta_y = min_turning_radius - (min_turning_radius * cos(angle));

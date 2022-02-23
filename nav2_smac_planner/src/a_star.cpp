@@ -275,6 +275,7 @@ bool AStarAlgorithm<Node2D>::backtracePath(NodePtr node, CoordinateVector& path)
         path.push_back(Node2D::getCoords(current_node->getIndex(), getSizeX(), getSizeDim3()));
         current_node = current_node->parent;
     }
+    path.push_back(Node2D::getCoords(current_node->getIndex(), getSizeX(), getSizeDim3()));
 
     return path.size() > 0;
 }
@@ -408,7 +409,6 @@ typename AStarAlgorithm<NodeT>::NodePtr AStarAlgorithm<NodeT>::tryAnalyticExpans
     // This must be a NodeHybrid or NodeLattice if we are using these motion models
     if (_motion_model == MotionModel::DUBIN || _motion_model == MotionModel::REEDS_SHEPP ||
         _motion_model == MotionModel::STATE_LATTICE) {
-        // See if we are closer and should be expanding more often
         // 如果更近的话就需要扩展得更频繁
         const Coordinates node_coords = NodeT::getCoords(current_node->getIndex(), getSizeX(), getSizeDim3());
         closest_distance = std::min(

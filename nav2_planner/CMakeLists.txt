@@ -58,6 +58,14 @@ add_executable(${executable_name}
   src/main.cpp
 )
 
+add_executable(goal_sender
+  src/goal_sender.cpp
+)
+
+ament_target_dependencies(goal_sender
+  ${dependencies}
+)
+
 target_link_libraries(${executable_name} ${library_name})
 
 ament_target_dependencies(${executable_name}
@@ -74,6 +82,9 @@ install(TARGETS ${library_name}
 )
 
 install(TARGETS ${executable_name}
+  RUNTIME DESTINATION lib/${PROJECT_NAME}
+)
+install(TARGETS goal_sender
   RUNTIME DESTINATION lib/${PROJECT_NAME}
 )
 

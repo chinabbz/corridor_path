@@ -17,6 +17,7 @@
 #include <vector>
 #include <algorithm>
 #include <limits>
+#include <fstream>
 
 #include "Eigen/Core"
 #include "nav2_smac_planner/smac_planner_hybrid.hpp"
@@ -62,7 +63,7 @@ void SmacPlannerHybrid::configure(const rclcpp_lifecycle::LifecycleNode::WeakPtr
 
     nav2_util::declare_parameter_if_not_declared(node, name + ".angle_quantization_bins", rclcpp::ParameterValue(72));
     node->get_parameter(name + ".angle_quantization_bins", angle_quantizations);
-    _angle_bin_size = 2.0 * M_PI / angle_quantizations;
+    _angle_bin_size = 2.0 * M_PI / angle_quantizations; // 一个bin的大小
     _angle_quantizations = static_cast<unsigned int>(angle_quantizations);
 
     nav2_util::declare_parameter_if_not_declared(node, name + ".allow_unknown", rclcpp::ParameterValue(true));
@@ -110,19 +111,30 @@ void SmacPlannerHybrid::configure(const rclcpp_lifecycle::LifecycleNode::WeakPtr
     }
 
     // Get parameters from json
-    double W, L, Threading, Rmin;
+    float W, L, Theading, Rmid;
     int Max_SteerAngle;
 
     node->declare_parameter<int>("Max_SteerAngle");
-    node->declare_parameter<double>("W");
-    node->declare_parameter<double>("L");
-    node->declare_parameter<double>("Theading");
-    node->declare_parameter<double>("Rmid");
+    node->declare_parameter<float>("W");
+    node->declare_parameter<float>("L");
+    node->declare_parameter<float>("Theading");
+    node->declare_parameter<float>("Rmid");
     node->get_parameter_or<int>("Max_SteerAngle", Max_SteerAngle, 40);
-    node->get_parameter_or<double>("W", W, 1.69);
-    node->get_parameter_or<double>("L", L, 4.07);
-    node->get_parameter_or<double>("Theading", Threading, 0.125);
-    node->get_parameter_or<double>("Rmid", Rmin, 6.0);
+    node->get_parameter_or<float>("W", W, 1.69);
+    node->get_parameter_or<float>("L", L, 4.07);
+    node->get_parameter_or<float>("Theading", Theading, 0.125);
+    node->get_parameter_or<float>("Rmid", Rmid, 6.0);
+    // 从json文件中获取了结构参数后要从中取最大的转弯半径
+    float turning_radius_from_MaxSteerAngle = L / 2 / tan(Max_SteerAngle / 180.0 * 3.14);
+    float turning_radius_from_Theading = 1 / Theading;
+    float turning_radius_from_Rmid = Rmid;
+    _search_info.minimum_turning_radius =
+        std::max({_search_info.minimum_turning_radius, turning_radius_from_MaxSteerAngle, turning_radius_from_Theading,
+                  turning_radius_from_Rmid});
+    RCLCPP_INFO(node->get_logger(), "turning_radius_from_MaxSteerAngle is %f", turning_radius_from_MaxSteerAngle);
+    RCLCPP_INFO(node->get_logger(), "turning_radius_from_Theading is %f", turning_radius_from_Theading);
+    RCLCPP_INFO(node->get_logger(), "turning_radius_from_Rmid is %f", turning_radius_from_Rmid);
+    RCLCPP_INFO(node->get_logger(), "minimum turning radius is %f", _search_info.minimum_turning_radius);
 
     // convert to grid coordinates
     if (!_downsample_costmap) {
@@ -242,6 +254,7 @@ nav_msgs::msg::Path SmacPlannerHybrid::createPlan(const geometry_msgs::msg::Pose
         orientation_bin -= static_cast<float>(_angle_quantizations);
     }
     unsigned int orientation_bin_id = static_cast<unsigned int>(floor(orientation_bin));
+    RCLCPP_INFO(_logger, "start orientation bin id is %d", orientation_bin_id);
     _a_star->setStart(mx, my, orientation_bin_id);
 
     // Set goal point, in A* bin search coordinates
@@ -307,6 +320,8 @@ nav_msgs::msg::Path SmacPlannerHybrid::createPlan(const geometry_msgs::msg::Pose
     // Find how much time we have left to do smoothing
     steady_clock::time_point b = steady_clock::now();
     duration<double> time_span = duration_cast<duration<double>>(b - a);
+    RCLCPP_INFO(_logger, "Time for planning is: %lf", time_span);
+    RCLCPP_INFO(_logger, "plan size is: %d", plan.poses.size());
     double time_remaining = _max_planning_time - static_cast<double>(time_span.count());
 
 #ifdef BENCHMARK_TESTING
@@ -314,17 +329,72 @@ nav_msgs::msg::Path SmacPlannerHybrid::createPlan(const geometry_msgs::msg::Pose
               << std::endl;
 #endif
 
-    // Smooth plan
-    if (num_iterations > 1 && plan.poses.size() > 6) {
-        _smoother->smooth(plan, costmap, time_remaining);
-    }
+    // // Smooth plan
+    // if (num_iterations > 1 && plan.poses.size() > 6) {
+    //     _smoother->smooth(plan, costmap, time_remaining);
+    // }
 
 #ifdef BENCHMARK_TESTING
     steady_clock::time_point c = steady_clock::now();
     duration<double> time_span2 = duration_cast<duration<double>>(c - b);
     std::cout << "It took " << time_span2.count() * 1000 << " milliseconds to smooth path." << std::endl;
 #endif
+    // 输出至txt
+    std::ofstream myout("task9_result/task9_result.txt");
+    double last_yaw = tf2::getYaw(start.pose.orientation), last_x = start.pose.position.x,
+           last_y = start.pose.position.y;
 
+    char out_c;
+    for (int i = 0; i < plan.poses.size() - 1; i++) {
+        double out_x = plan.poses[i].pose.position.x;
+        double out_y = plan.poses[i].pose.position.y;
+        double out_yaw = tf2::getYaw(plan.poses[i].pose.orientation);
+        //判断距离是否大于0.5
+        // if (hypotf(out_x - last_x, out_y - last_y) > 0.7) {
+        //     double last_yaw_to_2pi = last_yaw < 0 ? last_yaw + M_PI * 2 : last_yaw;
+        //     double out_yaw_to_2pi = out_yaw < 0 ? out_yaw + M_PI * 2 : out_yaw;
+        //     out_yaw = (last_yaw_to_2pi + out_yaw_to_2pi) / 2;
+        //     while (out_yaw > M_PI) out_yaw -= M_PI * 2;
+        //     out_x = last_x + 0.5 * cos(out_yaw);
+        //     out_y = last_y + 0.5 * sin(out_yaw);
+        //     i--;
+        // }
+        // 判断是前进还是后退
+        if (out_yaw >= -M_PI_4 && out_yaw <= M_PI_4) { // 朝向x正方向
+            if (plan.poses[i + 1].pose.position.x > out_x)
+                out_c = 'D';
+            else
+                out_c = 'R';
+        }
+        if (out_yaw >= M_PI_4 * 3 || out_yaw <= -M_PI_4 * 3) { // 朝向x负方向
+            if (plan.poses[i + 1].pose.position.x < out_x)
+                out_c = 'D';
+            else
+                out_c = 'R';
+        }
+        if (out_yaw >= M_PI_4 && out_yaw <= M_PI_4 * 3) { // 朝向y正方向
+            if (plan.poses[i + 1].pose.position.y > out_y)
+                out_c = 'D';
+            else
+                out_c = 'R';
+        }
+        if (out_yaw >= -M_PI_4 * 3 && out_yaw <= -M_PI_4) { // 朝向y负方向
+            if (plan.poses[i + 1].pose.position.y < out_y)
+                out_c = 'D';
+            else
+                out_c = 'R';
+        }
+        if (fabs(out_yaw - last_yaw) > 0.125) {
+            std::cout << i << std::endl;
+        }
+        last_yaw = out_yaw;
+        last_x = out_x;
+        last_y = out_y;
+        myout << out_x << " " << out_y << " " << out_yaw << " " << out_c << std::endl;
+    }
+    myout << goal.pose.position.x << " " << goal.pose.position.y << " " << tf2::getYaw(goal.pose.orientation) << " "
+          << out_c << std::endl;
+    myout.close();
     return plan;
 }
 

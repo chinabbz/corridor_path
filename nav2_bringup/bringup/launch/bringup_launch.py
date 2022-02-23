@@ -74,7 +74,7 @@ def generate_launch_description():
 
     declare_txt_file_cmd = DeclareLaunchArgument(
         'txt_file',
-        default_value=os.path.join(bringup_dir, 'params', 'task9.txt'),
+        default_value=os.path.join(os.getcwd(), 'task9/task9.txt'),
         description='Full path to the contest txt file')
 
     declare_autostart_cmd = DeclareLaunchArgument(
