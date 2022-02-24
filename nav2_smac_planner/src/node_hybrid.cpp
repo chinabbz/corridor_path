@@ -164,7 +164,7 @@ void HybridMotionTable::initReedsShepp(unsigned int &size_x_in, unsigned int & /
     } else {
         increments = ceil(angle / bin_size);
     }
-    angle = increments * bin_size / 2.0;
+    angle = increments * bin_size;
 
     float delta_x = min_turning_radius * sin(angle);
     float delta_y = min_turning_radius - (min_turning_radius * cos(angle));
