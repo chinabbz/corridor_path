@@ -341,6 +341,7 @@ nav_msgs::msg::Path SmacPlannerHybrid::createPlan(const geometry_msgs::msg::Pose
 #endif
     // 输出至txt
     std::ofstream myout("task9_result/task9_result.txt");
+    std::ofstream origin("task9_result/task9_result_origin.txt");
     double last_yaw = tf2::getYaw(start.pose.orientation), last_x = start.pose.position.x,
            last_y = start.pose.position.y;
 
@@ -349,6 +350,7 @@ nav_msgs::msg::Path SmacPlannerHybrid::createPlan(const geometry_msgs::msg::Pose
         double out_x = plan.poses[i].pose.position.x;
         double out_y = plan.poses[i].pose.position.y;
         double out_yaw = tf2::getYaw(plan.poses[i].pose.orientation);
+        origin << out_x << " " << out_y << " " << out_yaw << " " << std::endl;
         //判断距离是否大于0.5
         // if (hypotf(out_x - last_x, out_y - last_y) > 0.7) {
         //     double last_yaw_to_2pi = last_yaw < 0 ? last_yaw + M_PI * 2 : last_yaw;
@@ -384,9 +386,17 @@ nav_msgs::msg::Path SmacPlannerHybrid::createPlan(const geometry_msgs::msg::Pose
             else
                 out_c = 'R';
         }
-        if (fabs(out_yaw - last_yaw) > 0.125) {
-            std::cout << i << std::endl;
+        // 判断heading是否超过0.125
+        if (fabs(out_yaw) < 3.0 && fabs(last_yaw) < 3.0) {
+            if (out_yaw > last_yaw + 0.125) {
+                std::cout << i << std::endl;
+                out_yaw = last_yaw + 0.125;
+            } else if (out_yaw < last_yaw - 0.125) {
+                std::cout << i << std::endl;
+                out_yaw = last_yaw - 0.125;
+            }
         }
+
         last_yaw = out_yaw;
         last_x = out_x;
         last_y = out_y;

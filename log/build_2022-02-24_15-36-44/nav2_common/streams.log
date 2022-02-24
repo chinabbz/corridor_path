@@ -1,0 +1,21 @@
+[0.020s] Invoking command in '/home/luoteng/only_for_contest/src/build/nav2_common': /usr/bin/cmake /home/luoteng/only_for_contest/src/nav2_common -DAMENT_CMAKE_SYMLINK_INSTALL=1 -DCMAKE_INSTALL_PREFIX=/home/luoteng/only_for_contest/src/install/nav2_common
+[0.196s] -- Configuring incomplete, errors occurred!
+[0.207s] See also "/home/luoteng/only_for_contest/src/build/nav2_common/CMakeFiles/CMakeOutput.log".
+[0.207s] CMake Error at CMakeLists.txt:5 (find_package):
+[0.207s]   By not providing "Findament_cmake_core.cmake" in CMAKE_MODULE_PATH this
+[0.208s]   project has asked CMake to find a package configuration file provided by
+[0.209s]   "ament_cmake_core", but CMake did not find one.
+[0.210s] 
+[0.210s]   Could not find a package configuration file provided by "ament_cmake_core"
+[0.210s]   with any of the following names:
+[0.210s] 
+[0.211s]     ament_cmake_coreConfig.cmake
+[0.212s]     ament_cmake_core-config.cmake
+[0.212s] 
+[0.213s]   Add the installation prefix of "ament_cmake_core" to CMAKE_PREFIX_PATH or
+[0.213s]   set "ament_cmake_core_DIR" to a directory containing one of the above
+[0.213s]   files.  If "ament_cmake_core" provides a separate development package or
+[0.213s]   SDK, be sure it has been installed.
+[0.213s] 
+[0.213s] 
+[0.214s] Invoked command in '/home/luoteng/only_for_contest/src/build/nav2_common' returned '1': /usr/bin/cmake /home/luoteng/only_for_contest/src/nav2_common -DAMENT_CMAKE_SYMLINK_INSTALL=1 -DCMAKE_INSTALL_PREFIX=/home/luoteng/only_for_contest/src/install/nav2_common

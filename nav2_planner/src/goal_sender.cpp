@@ -24,7 +24,7 @@ int main(int argc, char** argv) {
     node->get_parameter<double>("x", goal.pose.position.x);
     node->get_parameter<double>("y", goal.pose.position.y);
     double heading;
-    node->get_parameter<double>("y", heading);
+    node->get_parameter<double>("heading", heading);
     tf2::Quaternion q_tmp;
     q_tmp.setRPY(0, 0, heading);
     goal.pose.orientation = tf2::toMsg(q_tmp);
