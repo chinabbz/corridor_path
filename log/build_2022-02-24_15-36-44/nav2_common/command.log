@@ -1,2 +1,0 @@
-Invoking command in '/home/luoteng/only_for_contest/src/build/nav2_common': /usr/bin/cmake /home/luoteng/only_for_contest/src/nav2_common -DAMENT_CMAKE_SYMLINK_INSTALL=1 -DCMAKE_INSTALL_PREFIX=/home/luoteng/only_for_contest/src/install/nav2_common
-Invoked command in '/home/luoteng/only_for_contest/src/build/nav2_common' returned '1': /usr/bin/cmake /home/luoteng/only_for_contest/src/nav2_common -DAMENT_CMAKE_SYMLINK_INSTALL=1 -DCMAKE_INSTALL_PREFIX=/home/luoteng/only_for_contest/src/install/nav2_common
