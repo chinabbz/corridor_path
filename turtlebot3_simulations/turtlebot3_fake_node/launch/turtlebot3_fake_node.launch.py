@@ -77,16 +77,10 @@ def generate_launch_description():
             output='screen',
             parameters=[{'use_sim_time': use_sim_time}],
             arguments=[urdf]),
-        # Node(
-        #     package='tf2_ros',
-        #     executable='static_transform_publisher',
-        #     output='screen',
-        #     parameters=[{'x': 0}, {'y': 0}, {'z': 0}, {'qx': 0}, {'qy': 0}, {'qz': 0}, {'qw': 1},
-        #               {'frame_id': 'map'}, {'child_frame_id': 'odom'}]),
         Node(
             package='tf2_ros',
             executable='static_transform_publisher',
             output='screen',
             parameters=[{'use_sim_time': use_sim_time}],
-            arguments = ['0', '0', '0', '0', '0', '0', 'map', 'odom']),
+            arguments = ['0', '0', '0', '0', '0', '0', 'map', 'odom'])
     ])

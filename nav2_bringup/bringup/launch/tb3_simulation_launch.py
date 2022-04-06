@@ -63,14 +63,14 @@ def generate_launch_description():
 
     declare_map_yaml_cmd = DeclareLaunchArgument(
         'map',
-        default_value=os.path.join(os.getcwd(), 'task9/map.yaml'),
+        default_value=os.path.join(bringup_dir, 'maps/huahong.yaml'),
         # default_value=os.path.join(bringup_dir, 'maps', 'turtlebot3_world.yaml'),
         # default_value=os.path.join(bringup_dir, 'maps', 'test.yaml'),
         description='Full path to map file to load')
 
     declare_use_sim_time_cmd = DeclareLaunchArgument(
         'use_sim_time',
-        default_value='true',
+        default_value='false',
         description='Use simulation (Gazebo) clock if true')
 
     declare_params_file_cmd = DeclareLaunchArgument(
@@ -134,8 +134,8 @@ def generate_launch_description():
     ld.add_action(declare_rviz_config_file_cmd)
     ld.add_action(declare_use_rviz_cmd)
 
+    ld.add_action(fake_node_cmd)
     ld.add_action(rviz_cmd)
     ld.add_action(bringup_cmd)
-    ld.add_action(fake_node_cmd)
 
     return ld

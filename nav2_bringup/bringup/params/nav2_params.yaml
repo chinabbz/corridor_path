@@ -44,17 +44,18 @@ global_costmap:
       robot_base_frame: base_link
       use_sim_time: True
       resolution: 0.1
+      robot_radius: 0.1
       track_unknown_space: true
-      footprint: "[[2.035,0.845],[2.035,-0.845],[-2.035,-0.845],[-2.035,0.845]]"
-      footprint_padding: 0.2
-      plugins: ["static_layer"]
+      plugins: ["static_layer", "inflation_layer"]
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
+        enabled: true
         map_subscribe_transient_local: True
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
+        enabled: true
         cost_scaling_factor: 3.0 
-        inflation_radius: 0.55
+        inflation_radius: 0.1
       always_send_full_costmap: True
   global_costmap_client:
     ros__parameters:
@@ -84,7 +85,7 @@ planner_server:
     GridBased:
       plugin: "nav2_smac_planner/SmacPlannerHybrid"
       tolerance: 0.5                      # tolerance for planning if unable to reach exact pose, in meters, for 2D node
-      downsample_costmap: True           # whether or not to downsample the map
+      downsample_costmap: False           # whether or not to downsample the map
       downsampling_factor: 5              # multiplier for the resolution of the costmap layer (e.g. 2 on a 5cm costmap would be 10cm)
       allow_unknown: false                # allow traveling in unknown space
       max_iterations: 1000000             # maximum total iterations to search for before failing (in case unreachable), set to -1 to disable
@@ -95,12 +96,12 @@ planner_server:
       angle_quantization_bins: 72         # For Hybrid/Lattice nodes: Number of angle bins for search, must be 1 for 2D node (no angle search)
       analytic_expansion_ratio: 3.5       # For Hybrid/Lattice nodes: The ratio to attempt analytic expansions during search for final approach.
       analytic_expansion_max_length: 3.0    # For Hybrid/Lattice nodes: The maximum length of the analytic expansion to be considered valid to prevent unsafe shortcutting (in meters). This should be scaled with minimum turning radius and be no less than 4-5x the minimum radius
-      minimum_turning_radius: 8.75        # For Hybrid/Lattice nodes: minimum turning radius in m of path / vehicle
+      minimum_turning_radius: 2.0        # For Hybrid/Lattice nodes: minimum turning radius in m of path / vehicle
       reverse_penalty: 2.1                # For Reeds-Shepp model: penalty to apply if motion is reversing, must be => 1
       change_penalty: 0.15                # For Hybrid nodes: penalty to apply if motion is changing directions, must be >= 0
       non_straight_penalty: 1.50          # For Hybrid nodes: penalty to apply if motion is non-straight, must be => 1
       cost_penalty: 1.7                   # For Hybrid nodes: penalty to apply to higher cost areas when adding into the obstacle map dynamic programming distance expansion heuristic. This drives the robot more towards the center of passages. A value between 1.3 - 3.5 is reasonable.
-      lookup_table_size: 20.0             # For Hybrid nodes: Size of the dubin/reeds-sheep distance window to cache, in meters.
+      lookup_table_size: 1.0             # For Hybrid nodes: Size of the dubin/reeds-sheep distance window to cache, in meters.
       cache_obstacle_heuristic: True      # For Hybrid nodes: Cache the obstacle map dynamic programming distance expansion heuristic between subsiquent replannings of the same goal location. Dramatically speeds up replanning performance (40x) if costmap is largely static.     
       allow_reverse_expansion: False      # For Lattice nodes: Whether to expand state lattice graph in forward primitives or reverse as well, will double the branching factor at each step.   
       smooth_path: False                   # For Lattice/Hybrid ndoes: Whether or not to smooth the path, always true for 2D nodes.

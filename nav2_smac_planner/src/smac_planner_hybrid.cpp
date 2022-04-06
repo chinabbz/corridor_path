@@ -89,7 +89,7 @@ void SmacPlannerHybrid::configure(const rclcpp_lifecycle::LifecycleNode::WeakPtr
 
     nav2_util::declare_parameter_if_not_declared(node, name + ".max_planning_time", rclcpp::ParameterValue(5.0));
     node->get_parameter(name + ".max_planning_time", _max_planning_time);
-    nav2_util::declare_parameter_if_not_declared(node, name + ".lookup_table_size", rclcpp::ParameterValue(20.0));
+    nav2_util::declare_parameter_if_not_declared(node, name + ".lookup_table_size", rclcpp::ParameterValue(1.0));
     node->get_parameter(name + ".lookup_table_size", _lookup_table_size);
 
     nav2_util::declare_parameter_if_not_declared(node, name + ".motion_model_for_search",
@@ -339,72 +339,88 @@ nav_msgs::msg::Path SmacPlannerHybrid::createPlan(const geometry_msgs::msg::Pose
     duration<double> time_span2 = duration_cast<duration<double>>(c - b);
     std::cout << "It took " << time_span2.count() * 1000 << " milliseconds to smooth path." << std::endl;
 #endif
-    // 输出至txt
-    std::ofstream myout("task9_result/task9_result.txt");
-    std::ofstream origin("task9_result/task9_result_origin.txt");
-    double last_yaw = tf2::getYaw(start.pose.orientation), last_x = start.pose.position.x,
-           last_y = start.pose.position.y;
 
-    char out_c;
-    for (int i = 0; i < plan.poses.size() - 1; i++) {
-        double out_x = plan.poses[i].pose.position.x;
-        double out_y = plan.poses[i].pose.position.y;
-        double out_yaw = tf2::getYaw(plan.poses[i].pose.orientation);
-        origin << out_x << " " << out_y << " " << out_yaw << " " << std::endl;
-        //判断距离是否大于0.5
-        // if (hypotf(out_x - last_x, out_y - last_y) > 0.7) {
-        //     double last_yaw_to_2pi = last_yaw < 0 ? last_yaw + M_PI * 2 : last_yaw;
-        //     double out_yaw_to_2pi = out_yaw < 0 ? out_yaw + M_PI * 2 : out_yaw;
-        //     out_yaw = (last_yaw_to_2pi + out_yaw_to_2pi) / 2;
-        //     while (out_yaw > M_PI) out_yaw -= M_PI * 2;
-        //     out_x = last_x + 0.5 * cos(out_yaw);
-        //     out_y = last_y + 0.5 * sin(out_yaw);
-        //     i--;
-        // }
-        // 判断是前进还是后退
-        if (out_yaw >= -M_PI_4 && out_yaw <= M_PI_4) { // 朝向x正方向
-            if (plan.poses[i + 1].pose.position.x > out_x)
-                out_c = 'D';
-            else
-                out_c = 'R';
-        }
-        if (out_yaw >= M_PI_4 * 3 || out_yaw <= -M_PI_4 * 3) { // 朝向x负方向
-            if (plan.poses[i + 1].pose.position.x < out_x)
-                out_c = 'D';
-            else
-                out_c = 'R';
-        }
-        if (out_yaw >= M_PI_4 && out_yaw <= M_PI_4 * 3) { // 朝向y正方向
-            if (plan.poses[i + 1].pose.position.y > out_y)
-                out_c = 'D';
-            else
-                out_c = 'R';
-        }
-        if (out_yaw >= -M_PI_4 * 3 && out_yaw <= -M_PI_4) { // 朝向y负方向
-            if (plan.poses[i + 1].pose.position.y < out_y)
-                out_c = 'D';
-            else
-                out_c = 'R';
-        }
-        // 判断heading是否超过0.125
-        if (fabs(out_yaw) < 3.0 && fabs(last_yaw) < 3.0) {
-            if (out_yaw > last_yaw + 0.125) {
-                std::cout << i << std::endl;
-                out_yaw = last_yaw + 0.125;
-            } else if (out_yaw < last_yaw - 0.125) {
-                std::cout << i << std::endl;
-                out_yaw = last_yaw - 0.125;
+    double dx, dy, dis;
+    auto path_node = rclcpp::Node::make_shared("path_pub");
+    auto path_pub = path_node->create_publisher<nav_msgs::msg::Path>("path_unifor", 10);
+    nav_msgs::msg::Path path_uniformity;
+    path_uniformity.header.frame_id = "map";
+    path_uniformity.header.stamp = path_node->get_clock()->now();
+    path_uniformity.poses.emplace_back(plan.poses[0]);
+    for (int i = 0; i < plan.poses.size(); i++) {
+        for (int j = i + 1; j < plan.poses.size() - 1; j++) {
+            dx = plan.poses[j].pose.position.x - plan.poses[i].pose.position.x;
+            dy = plan.poses[j].pose.position.y - plan.poses[i].pose.position.y;
+            dis = dx * dx + dy * dy;
+            // 0.2m一个点
+            if (dis > 0.04) {
+                path_uniformity.poses.emplace_back(plan.poses[j]);
+                i = j;
+                break;
             }
         }
-
-        last_yaw = out_yaw;
-        last_x = out_x;
-        last_y = out_y;
-        myout << out_x << " " << out_y << " " << out_yaw << " " << out_c << std::endl;
     }
-    myout << goal.pose.position.x << " " << goal.pose.position.y << " " << tf2::getYaw(goal.pose.orientation) << " "
-          << out_c << std::endl;
-    myout.close();
+    path_uniformity.poses.emplace_back(plan.poses[plan.poses.size() - 1]);
+
+    path_pub->publish(path_uniformity);
+
+    // 建立走廊
+    std::shared_ptr<Corridor> corridor_obj; // 走廊
+    corridor_obj.reset(new Corridor(std::make_shared<nav_msgs::msg::Path>(path_uniformity),
+                                    std::make_shared<nav2_costmap_2d::Costmap2D>(*costmap)));
+    if (!corridor_obj.get()->update(true)) {
+        RCLCPP_ERROR(_logger, "no corridor!!!");
+    }
+    // 发布走廊
+    auto corridor_node = rclcpp::Node::make_shared("corridor_publisher");
+    auto corridor_publisher = corridor_node->create_publisher<visualization_msgs::msg::MarkerArray>("corridor", 10);
+    visualization_msgs::msg::MarkerArray boxes;
+    visualization_msgs::msg::Marker abox;
+    for (int i = 0; i < corridor_obj.get()->SFC.size(); i++) {
+        abox.header.frame_id = "map";
+        abox.header.stamp = corridor_node.get()->get_clock()->now();
+        abox.id = i;
+        abox.type = visualization_msgs::msg::Marker::CUBE;
+        abox.scale.x = corridor_obj.get()->SFC[i].first[2] - corridor_obj.get()->SFC[i].first[0];
+        abox.scale.y = corridor_obj.get()->SFC[i].first[3] - corridor_obj.get()->SFC[i].first[1];
+        abox.scale.z = 0.1;
+        abox.color.a = 0.5;
+        // color
+        if (i % 4 == 0) {
+            abox.color.r = 255;
+            abox.color.g = 0;
+            abox.color.b = 0;
+            abox.color.a = 1.0;
+        }
+        if (i % 4 == 1) {
+            abox.color.r = 0;
+            abox.color.g = 255;
+            abox.color.b = 0;
+            abox.color.a = 1.0;
+        }
+        if (i % 4 == 2) {
+            abox.color.r = 0;
+            abox.color.g = 0;
+            abox.color.b = 255;
+            abox.color.a = 1.0;
+        }
+        if (i % 4 == 3) {
+            abox.color.r = 255;
+            abox.color.g = 255;
+            abox.color.b = 0;
+            abox.color.a = 1.0;
+        }
+        abox.pose.position.x = (corridor_obj.get()->SFC[i].first[2] + corridor_obj.get()->SFC[i].first[0]) / 2;
+        abox.pose.position.y = (corridor_obj.get()->SFC[i].first[3] + corridor_obj.get()->SFC[i].first[1]) / 2;
+        boxes.markers.emplace_back(abox);
+    }
+    corridor_publisher->publish(boxes);
+    // 优化
+    std::shared_ptr<MPCPlanner> MPCPlanner_obj; // 轨迹优化
+    MPCPlanner_obj.reset(new MPCPlanner(corridor_obj, std::make_shared<nav_msgs::msg::Path>(path_uniformity)));
+    if (!MPCPlanner_obj.get()->update()) {
+        RCLCPP_ERROR(_logger, "no corridor!!!");
+    }
     return plan;
 }
 

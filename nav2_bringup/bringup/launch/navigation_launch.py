@@ -60,6 +60,11 @@ def generate_launch_description():
             param_rewrites=param_substitutions,
             convert_types=True)
 
+    urdf = os.path.join(
+        get_package_share_directory('nav2_bringup'),
+        'urdf',
+        'turtlebot3_waffle.urdf')
+
     f = open(os.path.join(os.getcwd(), 'task9/task9.json'),)
     task_params = json.load(f)
     target_params= task_params["Target"]
@@ -121,6 +126,14 @@ def generate_launch_description():
             parameters=[{'use_sim_time': use_sim_time},
                         {'autostart': autostart},
                         {'node_names': lifecycle_nodes}]),
+
+        Node(
+            package='robot_state_publisher',
+            executable='robot_state_publisher',
+            name='robot_state_publisher',
+            output='screen',
+            parameters=[{'use_sim_time': False}],
+            arguments=[urdf]),
         
         
 
