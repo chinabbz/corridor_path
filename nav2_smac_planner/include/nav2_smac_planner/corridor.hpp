@@ -43,28 +43,6 @@ public:
         makespan = T.back(); // 完成所需时间
         M = T.size() - 1;    // the number of segments
 
-        // // 这一步是将每段路径5等分，存在plan中
-        // for (j = 0; j < M; j++) {
-        //     dx = (initTraj[i][j + 1].x() - initTraj[i][j].x()) / 5;
-        //     dy = (initTraj[i][j + 1].y() - initTraj[i][j].y()) / 5;
-        //     dis = 25 * (dx * dx + dy * dy);
-
-        //     for (k = 0; k < 5; k++) {
-        //         plan[5 * j + k][0] = initTraj[i][j].x() + dx * k;
-        //         plan[5 * j + k][1] = initTraj[i][j].y() + dy * k;
-
-        //         if (dis < 0.1) {
-        //             plan[5 * j + k][3] = 0;
-        //         }
-        //         if (dis < 1.1) {
-        //             plan[5 * j + k][3] = MAXV * 0.7;
-        //         } else {
-        //             plan[5 * j + k][3] = MAXV;
-        //         }
-        //     }
-        //     plan[5 * M][0] = initTraj[M].x();
-        //     plan[5 * M][1] = initTraj[M].y();
-        // }
         for (int i = 0; i < M; i++) {
             plan[i][0] = initTraj.poses[i].pose.position.x;
             plan[i][1] = initTraj.poses[i].pose.position.y;
@@ -91,18 +69,12 @@ private:
         for (double i = box[0]; i < box[2] + SP_EPSILON_FLOAT; i += 0.1) {
             int count2 = 0;
             for (double j = box[1]; j < box[3] + SP_EPSILON_FLOAT; j += 0.1) {
-                // x = i + SP_EPSILON_FLOAT;
-                // if (count1 == 0) x = box[0] - SP_EPSILON_FLOAT;
-                // y = j + SP_EPSILON_FLOAT;
-                // if (count2 == 0) y = box[1] - SP_EPSILON_FLOAT;
                 x = i;
                 y = j;
 
                 // 因为有膨胀层的存在，所以只要有代价，就认为有碰撞风险
                 unsigned int mx, my;
                 costmap_obj.get()->worldToMap(x, y, mx, my);
-                // std::cout << "x: " << x << ", y: " << y
-                //           << ", cost: " << static_cast<int>(costmap_obj.get()->getCost(mx, my)) << std::endl;
                 if (costmap_obj.get()->getCost(mx, my) > 0) {
                     return true;
                 }

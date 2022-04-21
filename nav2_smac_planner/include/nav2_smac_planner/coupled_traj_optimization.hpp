@@ -59,10 +59,10 @@ public:
         // NOTE: You'll probably go back and forth between this function and the Solver function below.
         fg[0] = 0;
         // 这里是当前轨迹与参考轨迹之间的偏差，注意没有角度信息
-        for (int i = 1; i < N; i++) {
-            fg[0] += W_X * CppAD::pow(vars[x_start + i] - plan[i][0], 2);
-            fg[0] += W_Y * CppAD::pow(vars[y_start + i] - plan[i][1], 2);
-        }
+        // for (int i = 1; i < N; i++) {
+        //     fg[0] += W_X * CppAD::pow(vars[x_start + i] - plan[i][0], 2);
+        //     fg[0] += W_Y * CppAD::pow(vars[y_start + i] - plan[i][1], 2);
+        // }
 
         // Minimize the value gap between sequential actuations.
         // 最小化连续输入之间的差异
@@ -76,6 +76,11 @@ public:
         fg[1 + y_start] = vars[y_start];
         fg[1 + theta_start] = vars[theta_start];
 
+        // 末位置限制
+        // fg[2 + x_start] = vars[x_start + N - 1];
+        // fg[2 + y_start] = vars[y_start + N - 1];
+        // fg[2 + theta_start] = vars[theta_start + N - 1];
+
         // 控制模型的限制
         for (int i = 0; i < N - 1; i++) {
             // t+1时刻的状态
@@ -88,7 +93,7 @@ public:
             AD<double> y0 = vars[y_start + i];
             AD<double> theta0 = vars[theta_start + i];
 
-            // 只考虑t时刻的控制
+            // t时刻的控制
             AD<double> v0 = vars[v_start + i];
             AD<double> omega0 = vars[omega_start + i];
 
@@ -96,6 +101,11 @@ public:
             fg[2 + y_start + i] = y1 - (y0 + v0 * CppAD::sin(theta0) * DT); // y1 = y0+vsin(theta)*dt
             fg[2 + theta_start + i] = theta1 - (theta0 + omega0 * DT);      // theta1 = theta0+ometa*dt
         }
+
+        // 末位置限制，加在约束函数末尾
+        fg[2 + theta_start + N - 1] = vars[x_start + N - 1];
+        fg[2 + theta_start + N] = vars[y_start + N - 1];
+        fg[2 + theta_start + N + 1] = vars[theta_start + N - 1];
     }
 };
 
@@ -111,8 +121,6 @@ public:
     {
         initTraj = *initTrajPlanner_obj.get();
         N = initTraj.poses.size(); // 路径点的数量
-
-        outdim = 2; // the number of outputs (x,y)
 
         SFC = corridor_obj.get()->SFC;
 
@@ -148,8 +156,8 @@ public:
         // 设定模型变量的数量（包括状态和输入）
         // 状态有3个元素，输入有2个元素
         size_t n_vars = N * 3 + (N - 1) * 2;
-        // 约束条件的数量
-        size_t n_constraints = N * 3;
+        // 约束条件的数量：初始状态3+控制模型3x(N-1)+末状态3
+        size_t n_constraints = (N + 1) * 3;
 
         // 自变量的初值
         // SHOULD BE 0 besides initial state.
@@ -181,23 +189,29 @@ public:
                 count++;
             }
 
+            RCLCPP_INFO(opt_node->get_logger(), "i:%d,corridor:%d", i, count);
+
             // 通过走廊来进行上下限设置
-            if (plan[i][0] - SFC[count].first[0] > 2)
-                vars_lowerbound[x_start + i] = plan[i][0] - 2;
-            else
-                vars_lowerbound[x_start + i] = SFC[count].first[0];
-            if (SFC[count].first[3] - plan[i][0] > 2)
-                vars_upperbound[x_start + i] = plan[i][0] + 2;
-            else
-                vars_upperbound[x_start + i] = SFC[count].first[2];
-            if (plan[i][1] - SFC[count].first[1] > 2)
-                vars_lowerbound[y_start + i] = plan[i][1] - 2;
-            else
-                vars_lowerbound[y_start + i] = SFC[count].first[1];
-            if (SFC[count].first[4] - plan[i][1] > 2)
-                vars_upperbound[y_start + i] = plan[i][1] + 2;
-            else
-                vars_upperbound[y_start + i] = SFC[count].first[3];
+            // if (plan[i][0] - SFC[count].first[0] > 2)
+            //     vars_lowerbound[x_start + i] = plan[i][0] - 2;
+            // else
+            //     vars_lowerbound[x_start + i] = SFC[count].first[0];
+            // if (SFC[count].first[3] - plan[i][0] > 2)
+            //     vars_upperbound[x_start + i] = plan[i][0] + 2;
+            // else
+            //     vars_upperbound[x_start + i] = SFC[count].first[2];
+            // if (plan[i][1] - SFC[count].first[1] > 2)
+            //     vars_lowerbound[y_start + i] = plan[i][1] - 2;
+            // else
+            //     vars_lowerbound[y_start + i] = SFC[count].first[1];
+            // if (SFC[count].first[4] - plan[i][1] > 2)
+            //     vars_upperbound[y_start + i] = plan[i][1] + 2;
+            // else
+            //     vars_upperbound[y_start + i] = SFC[count].first[3];
+            vars_lowerbound[x_start + i] = SFC[count].first[0];
+            vars_upperbound[x_start + i] = SFC[count].first[2];
+            vars_lowerbound[y_start + i] = SFC[count].first[1];
+            vars_upperbound[y_start + i] = SFC[count].first[3];
         }
 
         for (int i = v_start; i < omega_start; i++) {
@@ -208,12 +222,11 @@ public:
         }
 
         for (int i = omega_start; i < n_vars; i++) {
-            vars_lowerbound[i] = -MAXOMEGA;
-            vars_upperbound[i] = MAXOMEGA;
+            vars_lowerbound[i] = -MAXOMEGA * 2;
+            vars_upperbound[i] = MAXOMEGA * 2;
         }
 
-        // Lower and upper limits for the constraints
-        // Should be 0 besides initial state.
+        // 约束条件的上下限设置
         Dvector constraints_lowerbound(n_constraints);
         Dvector constraints_upperbound(n_constraints);
         for (int i = 0; i < n_constraints; i++) {
@@ -221,23 +234,43 @@ public:
             constraints_upperbound[i] = 0;
         }
 
-        double startangle;
-        for (int next = 5; next < N; next += 5) {
-            if ((plan[next][1] == plan[0][1]) & (plan[next][0] == plan[0][0]))
-                continue;
-            else {
-                startangle = atan2(plan[next][1] - plan[0][1], plan[next][0] - plan[0][0]);
-                break;
-            }
-        }
+        double startangle = tf2::getYaw(initTraj.poses[0].pose.orientation);
+        // for (int next = 1; next < N; next++) {
+        //     if ((plan[next][1] == plan[0][1]) && (plan[next][0] == plan[0][0]))
+        //         continue;
+        //     else {
+        //         startangle = atan2(plan[next][1] - plan[0][1], plan[next][0] - plan[0][0]);
+        //         break;
+        //     }
+        // }
+
+        // constraints_lowerbound[x_start] = plan[0][0] - 1e-8;
+        // constraints_upperbound[x_start] = plan[0][0] + 1e-8;
+        // constraints_lowerbound[y_start] = plan[0][1] - 1e-8;
+        // constraints_upperbound[y_start] = plan[0][1] + 1e-8;
+        // constraints_lowerbound[theta_start] = startangle - 1e-8;
+        // constraints_upperbound[theta_start] = startangle + 1e-8;
+
+        // constraints_lowerbound[x_start + N] = plan[N - 1][0] - 1e-8;
+        // constraints_upperbound[x_start + N] = plan[N - 1][0] + 1e-8;
+        // constraints_lowerbound[y_start + N] = plan[N - 1][1] - 1e-8;
+        // constraints_upperbound[y_start + N] = plan[N - 1][1] + 1e-8;
+        // constraints_lowerbound[theta_start + N] = plan[N - 1][2] - 1e-8;
+        // constraints_upperbound[theta_start + N] = plan[N - 1][2] + 1e-8;
 
         constraints_lowerbound[x_start] = plan[0][0];
-        constraints_lowerbound[y_start] = plan[0][1];
         constraints_upperbound[x_start] = plan[0][0];
+        constraints_lowerbound[y_start] = plan[0][1];
         constraints_upperbound[y_start] = plan[0][1];
-
         constraints_lowerbound[theta_start] = startangle;
         constraints_upperbound[theta_start] = startangle;
+
+        constraints_lowerbound[1 + theta_start + N - 1] = plan[N - 1][0];
+        constraints_upperbound[1 + theta_start + N - 1] = plan[N - 1][0];
+        constraints_lowerbound[1 + theta_start + N] = plan[N - 1][1];
+        constraints_upperbound[1 + theta_start + N] = plan[N - 1][1];
+        constraints_lowerbound[1 + theta_start + N + 1] = plan[N - 1][2];
+        constraints_upperbound[1 + theta_start + N + 1] = plan[N - 1][2];
 
         // 目标函数和约束函数都在这里面定义
         FG_eval fg_eval;
@@ -277,7 +310,12 @@ public:
         if (ok) {
             RCLCPP_INFO(opt_node->get_logger(), "Optimization Success!");
             RCLCPP_INFO(opt_node->get_logger(), "Cost:%lf ", solution.obj_value);
+        } else {
+            RCLCPP_INFO(opt_node->get_logger(), "Optimization Fail!");
+            RCLCPP_INFO(opt_node->get_logger(), "status:%d ", solution.status);
         }
+        RCLCPP_INFO(opt_node->get_logger(), "origin path x:%lf,y:%lf", plan[0][0], plan[0][1]);
+        RCLCPP_INFO(opt_node->get_logger(), "origin path last_x:%lf,last_y:%lf", plan[N - 1][0], plan[N - 1][1]);
 
         for (int i = 0; i < N; i++) {
             plan[i][0] = solution.x[x_start + i];
@@ -286,11 +324,11 @@ public:
             plan[i][3] = solution.x[v_start + i];
             plan[i][4] = solution.x[omega_start + i];
         }
+        RCLCPP_INFO(opt_node->get_logger(), "opt_path x:%lf,y:%lf ", plan[0][0], plan[0][1]);
+        RCLCPP_INFO(opt_node->get_logger(), "origin path last_x:%lf,last_y:%lf", plan[N - 1][0], plan[N - 1][1]);
     }
 
     bool update() {
-        int qi = 0;
-
         nav_msgs::msg::Path path;
         geometry_msgs::msg::PoseStamped pp;
 
@@ -324,10 +362,8 @@ private:
     std::shared_ptr<nav_msgs::msg::Path> initTrajPlanner_obj;
 
     nav_msgs::msg::Path initTraj;
-    std::vector<double> T;
     SFC_t SFC;
 
-    int phi, outdim;
     std::shared_ptr<rclcpp::Node> opt_node = rclcpp::Node::make_shared("optimization");
 
     // std::shared_ptr<Eigen::MatrixXd> Q_obj, Aeq_obj, Alq_obj, deq_obj, dlq_obj;
