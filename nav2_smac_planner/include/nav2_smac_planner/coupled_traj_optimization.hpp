@@ -20,6 +20,7 @@
 #include <geometry_msgs/msg/point_stamped.hpp>
 #include <geometry_msgs/msg/polygon_stamped.hpp>
 #include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 
 // EIGEN
 #include <Eigen/Dense>
@@ -41,8 +42,10 @@ using CppAD::AD;
 size_t x_start;
 size_t y_start;
 size_t theta_start; // 角度
-size_t v_start;
-size_t omega_start; // 角速度
+size_t L_start;
+size_t alpha_con;
+size_t x_con; //没有第一个点
+size_t y_con;
 
 // std::vector<ros::Publisher> way_point_pub;
 
@@ -54,223 +57,161 @@ public:
     typedef CPPAD_TESTVECTOR(AD<double>) ADvector;
 
     void operator()(ADvector& fg, const ADvector& vars) {
-        // MPC 实现
-        // fg a vector of constraints, x is a vector of constraints.
-        // NOTE: You'll probably go back and forth between this function and the Solver function below.
         fg[0] = 0;
-        // 这里是当前轨迹与参考轨迹之间的偏差，注意没有角度信息
-        // for (int i = 1; i < N; i++) {
-        //     fg[0] += W_X * CppAD::pow(vars[x_start + i] - plan[i][0], 2);
-        //     fg[0] += W_Y * CppAD::pow(vars[y_start + i] - plan[i][1], 2);
-        // }
+        // 最小化L的总和
 
-        // Minimize the value gap between sequential actuations.
-        // 最小化连续输入之间的差异
-        for (int i = 0; i < N - 2; i++) {
-            fg[0] += W_DV * CppAD::pow(vars[v_start + i + 1] - vars[v_start + i], 2);
-            fg[0] += W_DOMEGA * CppAD::pow(vars[omega_start + i + 1] - vars[omega_start + i], 2);
+        for (int i = 0; i < 2 * N; i++) {
+            fg[0] += vars[L_start + i];
         }
-
-        // 初始位置限制
-        fg[1 + x_start] = vars[x_start];
-        fg[1 + y_start] = vars[y_start];
-        fg[1 + theta_start] = vars[theta_start];
-
-        // 末位置限制
-        // fg[2 + x_start] = vars[x_start + N - 1];
-        // fg[2 + y_start] = vars[y_start + N - 1];
-        // fg[2 + theta_start] = vars[theta_start + N - 1];
-
-        // 控制模型的限制
-        for (int i = 0; i < N - 1; i++) {
+        // alpha限制
+        for (int i = 0; i < N; i++) {
+            fg[1 + alpha_con + i] = PI - CppAD::abs(vars[theta_start + i + 1] - vars[theta_start + i]);
+        }
+        // x,y限制
+        for (int i = 0; i < 2 * N; i++) {
             // t+1时刻的状态
             AD<double> x1 = vars[x_start + i + 1];
             AD<double> y1 = vars[y_start + i + 1];
-            AD<double> theta1 = vars[theta_start + i + 1];
 
             // t时刻的状态
             AD<double> x0 = vars[x_start + i];
             AD<double> y0 = vars[y_start + i];
-            AD<double> theta0 = vars[theta_start + i];
 
-            // t时刻的控制
-            AD<double> v0 = vars[v_start + i];
-            AD<double> omega0 = vars[omega_start + i];
+            AD<double> theta = vars[theta_start + (i + 1) / 2];
+            AD<double> L = vars[L_start + i];
 
-            fg[2 + x_start + i] = x1 - (x0 + v0 * CppAD::cos(theta0) * DT); // x1 = x0+vcos(theta)*dt
-            fg[2 + y_start + i] = y1 - (y0 + v0 * CppAD::sin(theta0) * DT); // y1 = y0+vsin(theta)*dt
-            fg[2 + theta_start + i] = theta1 - (theta0 + omega0 * DT);      // theta1 = theta0+ometa*dt
+            fg[1 + x_con + i] = x1 - (x0 + L * CppAD::cos(theta));
+            fg[1 + y_con + i] = y1 - (y0 + L * CppAD::sin(theta));
         }
-
-        // 末位置限制，加在约束函数末尾
-        fg[2 + theta_start + N - 1] = vars[x_start + N - 1];
-        fg[2 + theta_start + N] = vars[y_start + N - 1];
-        fg[2 + theta_start + N + 1] = vars[theta_start + N - 1];
     }
 };
 
 class MPCPlanner {
 public:
-    std_msgs::msg::Float64MultiArray msgs_traj_info;
-    std::vector<std_msgs::msg::Float64MultiArray> msgs_traj_coef;
-
     MPCPlanner(std::shared_ptr<Corridor> _corridor_obj, std::shared_ptr<nav_msgs::msg::Path> _initTrajPlanner_obj)
         : corridor_obj(std::move(_corridor_obj))
         , initTrajPlanner_obj(std::move(_initTrajPlanner_obj))
 
     {
         initTraj = *initTrajPlanner_obj.get();
-        N = initTraj.poses.size(); // 路径点的数量
-
         SFC = corridor_obj.get()->SFC;
-
-        for (int i = 0; i < N; i++) {
-            plan[i][0] = initTraj.poses[i].pose.position.x;
-            plan[i][1] = initTraj.poses[i].pose.position.y;
-        }
-
-        // 角度信息
-        for (int i = 0; i < N - 1; i++) {
-            plan[i][2] = atan2(plan[i + 1][1] - plan[i][1], plan[i + 1][0] - plan[i][0]);
-        }
-        plan[N - 1][2] = tf2::getYaw((initTraj.poses.end() - 1)->pose.orientation); //最后一个点的角度
-
-        // 角速度的初值
-        for (int i = 0; i < N - 1; i++) {
-            plan[i][4] = (plan[i + 1][2] - plan[i][2]) / DT;
-        }
+        N = SFC.size(); // 走廊的数量
 
         // 都是偏移量
-        x_start = 0;
-        y_start = x_start + N;
-        theta_start = y_start + N;
-        v_start = theta_start + N;
-        omega_start = v_start + (N - 1);
+        L_start = 0;
+        theta_start = L_start + 2 * N;
+        x_start = theta_start + N + 1; // x和y都是2*N+1
+        y_start = x_start + 2 * N + 1;
+
+        alpha_con = 0;
+        x_con = alpha_con + N; //没有第一个点
+        y_con = x_con + 2 * N;
     }
 
     void Solve() {
+        RCLCPP_INFO(opt_node->get_logger(), "solve begin");
         bool ok = true;
         size_t i;
         typedef CPPAD_TESTVECTOR(double) Dvector;
 
-        // 设定模型变量的数量（包括状态和输入）
-        // 状态有3个元素，输入有2个元素
-        size_t n_vars = N * 3 + (N - 1) * 2;
-        // 约束条件的数量：初始状态3+控制模型3x(N-1)+末状态3
-        size_t n_constraints = (N + 1) * 3;
+        // 设定模型变量的数量{L 2*N} {theta N+1} {x 2*N+1} {y 2*N+1}
+        size_t n_vars = 2 * N + N + 1 + 2 * (2 * N + 1);
+        // 约束条件的数量：{alpha N}+{x,y 4N-2}(不包括起始和终点位置)
+        size_t n_constraints = N + 4 * N - 2;
 
-        // 自变量的初值
-        // SHOULD BE 0 besides initial state.
+        // 自变量的初值，除了初始状态其余都设为0
         Dvector vars(n_vars);
-
         Dvector vars_lowerbound(n_vars);
         Dvector vars_upperbound(n_vars);
 
-        // 变量的上下限，具体限制在后面设置
-        for (int i = 0; i < v_start; i++) {
-            vars_lowerbound[i] = -BOUND;
-            vars_upperbound[i] = BOUND;
-        }
+        double startangle = tf2::getYaw(initTraj.poses[0].pose.orientation);
 
-        int count = 0;
-
-        for (int i = 0; i < N; i++) {
-            // 状态的初始值
-            vars[x_start + i] = plan[i][0];
-            vars[y_start + i] = plan[i][1];
-            vars[theta_start + i] = plan[i][2];
-            // 输入的初始值
-            if (i < N - 1) {
-                vars[v_start + i] = plan[i][3];
-                vars[omega_start + i] = plan[i][4];
+        // 提前写好x和y的上下界
+        vector<double> x_lowerbound, x_upperbound, y_lowerbound, y_upperbound;
+        x_lowerbound.emplace_back(initTraj.poses[0].pose.position.x);
+        x_upperbound.emplace_back(initTraj.poses[0].pose.position.x);
+        y_lowerbound.emplace_back(initTraj.poses[0].pose.position.y);
+        y_upperbound.emplace_back(initTraj.poses[0].pose.position.y);
+        for (int i = 1; i < 2 * N; i++) {
+            if (i % 2 == 0) {
+                x_lowerbound.emplace_back(max(SFC[i / 2 - 1].first[0], SFC[i / 2].first[0]));
+                x_upperbound.emplace_back(min(SFC[i / 2 - 1].first[2], SFC[i / 2].first[2]));
+                y_lowerbound.emplace_back(max(SFC[i / 2 - 1].first[1], SFC[i / 2].first[1]));
+                y_upperbound.emplace_back(min(SFC[i / 2 - 1].first[3], SFC[i / 2].first[3]));
+            } else {
+                x_lowerbound.emplace_back(SFC[i / 2].first[0]);
+                x_upperbound.emplace_back(SFC[i / 2].first[2]);
+                y_lowerbound.emplace_back(SFC[i / 2].first[1]);
+                y_upperbound.emplace_back(SFC[i / 2].first[3]);
             }
-
-            if (i > 1 && i == SFC[count + 1].second && count < SFC.size() - 1) {
-                count++;
-            }
-
-            RCLCPP_INFO(opt_node->get_logger(), "i:%d,corridor:%d", i, count);
-
-            // 通过走廊来进行上下限设置
-            // if (plan[i][0] - SFC[count].first[0] > 2)
-            //     vars_lowerbound[x_start + i] = plan[i][0] - 2;
-            // else
-            //     vars_lowerbound[x_start + i] = SFC[count].first[0];
-            // if (SFC[count].first[3] - plan[i][0] > 2)
-            //     vars_upperbound[x_start + i] = plan[i][0] + 2;
-            // else
-            //     vars_upperbound[x_start + i] = SFC[count].first[2];
-            // if (plan[i][1] - SFC[count].first[1] > 2)
-            //     vars_lowerbound[y_start + i] = plan[i][1] - 2;
-            // else
-            //     vars_lowerbound[y_start + i] = SFC[count].first[1];
-            // if (SFC[count].first[4] - plan[i][1] > 2)
-            //     vars_upperbound[y_start + i] = plan[i][1] + 2;
-            // else
-            //     vars_upperbound[y_start + i] = SFC[count].first[3];
-            vars_lowerbound[x_start + i] = SFC[count].first[0];
-            vars_upperbound[x_start + i] = SFC[count].first[2];
-            vars_lowerbound[y_start + i] = SFC[count].first[1];
-            vars_upperbound[y_start + i] = SFC[count].first[3];
         }
+        x_lowerbound.emplace_back(initTraj.poses.back().pose.position.x);
+        x_upperbound.emplace_back(initTraj.poses.back().pose.position.x);
+        y_lowerbound.emplace_back(initTraj.poses.back().pose.position.y);
+        y_upperbound.emplace_back(initTraj.poses.back().pose.position.y);
 
-        for (int i = v_start; i < omega_start; i++) {
-            vars_lowerbound[i] = 0;
-            vars_upperbound[i] = MAXV;
-            // 是否允许后退
-            if (1) vars_lowerbound[i] = -MAXV;
+        // 设定初始值
+        for (int i = 0; i < 2 * N; i++) {
+            vars[L_start + i] = LMIN;
         }
+        // 暂时未限制末位置的角度
+        for (int i = 1; i < N + 1; i++) {
+            vars[theta_start + i] = 0;
+        }
+        for (int i = 1; i < 2 * N; i++) {
+            vars[x_start + i] = x_lowerbound[i];
+            vars[y_start + i] = y_lowerbound[i];
+        }
+        vars[x_start] = initTraj.poses[0].pose.position.x;
+        vars[y_start] = initTraj.poses[0].pose.position.y;
+        vars[x_start + 2 * N] = initTraj.poses.back().pose.position.x;
+        vars[y_start + 2 * N] = initTraj.poses.back().pose.position.y;
+        vars[theta_start] = startangle;
+        RCLCPP_INFO(opt_node->get_logger(), "initial value set done");
 
-        for (int i = omega_start; i < n_vars; i++) {
-            vars_lowerbound[i] = -MAXOMEGA * 2;
-            vars_upperbound[i] = MAXOMEGA * 2;
+        // 变量的上下限设置
+        for (int i = 0; i < 2 * N; i++) {
+            vars_lowerbound[L_start + i] = LMIN;
+            vars_upperbound[L_start + i] = 10e3;
         }
+        for (int i = 1; i < N + 1; i++) {
+            vars_lowerbound[theta_start + i] = -PI;
+            vars_upperbound[theta_start + i] = PI;
+        }
+        for (int i = 1; i < 2 * N; i++) {
+            vars_lowerbound[x_start + i] = x_lowerbound[i];
+            vars_upperbound[x_start + i] = x_upperbound[i];
+            vars_lowerbound[y_start + i] = y_lowerbound[i];
+            vars_upperbound[y_start + i] = y_upperbound[i];
+        }
+        vars_lowerbound[x_start] = initTraj.poses[0].pose.position.x;
+        vars_upperbound[x_start] = initTraj.poses[0].pose.position.x;
+        vars_lowerbound[y_start] = initTraj.poses[0].pose.position.y;
+        vars_upperbound[y_start] = initTraj.poses[0].pose.position.y;
+
+        vars_lowerbound[x_start + 2 * N] = initTraj.poses[0].pose.position.x;
+        vars_upperbound[x_start + 2 * N] = initTraj.poses[0].pose.position.x;
+        vars_lowerbound[y_start + 2 * N] = initTraj.poses[0].pose.position.y;
+        vars_upperbound[y_start + 2 * N] = initTraj.poses[0].pose.position.y;
+
+        vars_lowerbound[theta_start] = startangle;
+        vars_upperbound[theta_start] = startangle;
+        RCLCPP_INFO(opt_node->get_logger(), "variant bound set done");
 
         // 约束条件的上下限设置
         Dvector constraints_lowerbound(n_constraints);
         Dvector constraints_upperbound(n_constraints);
-        for (int i = 0; i < n_constraints; i++) {
-            constraints_lowerbound[i] = 0;
-            constraints_upperbound[i] = 0;
+        // alpha>alpha_min
+        for (int i = 0; i < N; i++) {
+            constraints_lowerbound[alpha_con + i] = ALPHAMIN;
+            constraints_upperbound[alpha_con + i] = PI + 0.01;
         }
-
-        double startangle = tf2::getYaw(initTraj.poses[0].pose.orientation);
-        // for (int next = 1; next < N; next++) {
-        //     if ((plan[next][1] == plan[0][1]) && (plan[next][0] == plan[0][0]))
-        //         continue;
-        //     else {
-        //         startangle = atan2(plan[next][1] - plan[0][1], plan[next][0] - plan[0][0]);
-        //         break;
-        //     }
-        // }
-
-        // constraints_lowerbound[x_start] = plan[0][0] - 1e-8;
-        // constraints_upperbound[x_start] = plan[0][0] + 1e-8;
-        // constraints_lowerbound[y_start] = plan[0][1] - 1e-8;
-        // constraints_upperbound[y_start] = plan[0][1] + 1e-8;
-        // constraints_lowerbound[theta_start] = startangle - 1e-8;
-        // constraints_upperbound[theta_start] = startangle + 1e-8;
-
-        // constraints_lowerbound[x_start + N] = plan[N - 1][0] - 1e-8;
-        // constraints_upperbound[x_start + N] = plan[N - 1][0] + 1e-8;
-        // constraints_lowerbound[y_start + N] = plan[N - 1][1] - 1e-8;
-        // constraints_upperbound[y_start + N] = plan[N - 1][1] + 1e-8;
-        // constraints_lowerbound[theta_start + N] = plan[N - 1][2] - 1e-8;
-        // constraints_upperbound[theta_start + N] = plan[N - 1][2] + 1e-8;
-
-        constraints_lowerbound[x_start] = plan[0][0];
-        constraints_upperbound[x_start] = plan[0][0];
-        constraints_lowerbound[y_start] = plan[0][1];
-        constraints_upperbound[y_start] = plan[0][1];
-        constraints_lowerbound[theta_start] = startangle;
-        constraints_upperbound[theta_start] = startangle;
-
-        constraints_lowerbound[1 + theta_start + N - 1] = plan[N - 1][0];
-        constraints_upperbound[1 + theta_start + N - 1] = plan[N - 1][0];
-        constraints_lowerbound[1 + theta_start + N] = plan[N - 1][1];
-        constraints_upperbound[1 + theta_start + N] = plan[N - 1][1];
-        constraints_lowerbound[1 + theta_start + N + 1] = plan[N - 1][2];
-        constraints_upperbound[1 + theta_start + N + 1] = plan[N - 1][2];
+        // x,y=f(L,theta)
+        for (int i = 0; i < 2 * N; i++) {
+            constraints_lowerbound[x_con + i] = 0;
+            constraints_upperbound[y_con + i] = 0;
+        }
+        RCLCPP_INFO(opt_node->get_logger(), "constraints bound set done");
 
         // 目标函数和约束函数都在这里面定义
         FG_eval fg_eval;
@@ -314,18 +255,9 @@ public:
             RCLCPP_INFO(opt_node->get_logger(), "Optimization Fail!");
             RCLCPP_INFO(opt_node->get_logger(), "status:%d ", solution.status);
         }
-        RCLCPP_INFO(opt_node->get_logger(), "origin path x:%lf,y:%lf", plan[0][0], plan[0][1]);
-        RCLCPP_INFO(opt_node->get_logger(), "origin path last_x:%lf,last_y:%lf", plan[N - 1][0], plan[N - 1][1]);
-
-        for (int i = 0; i < N; i++) {
-            plan[i][0] = solution.x[x_start + i];
-            plan[i][1] = solution.x[y_start + i];
-            plan[i][2] = solution.x[theta_start + i];
-            plan[i][3] = solution.x[v_start + i];
-            plan[i][4] = solution.x[omega_start + i];
+        for (int i = 0; i < 2 * N + 1; i++) {
+            std::cout << "x" << i << ":" << solution.x[x_start + i] << std::endl;
         }
-        RCLCPP_INFO(opt_node->get_logger(), "opt_path x:%lf,y:%lf ", plan[0][0], plan[0][1]);
-        RCLCPP_INFO(opt_node->get_logger(), "origin path last_x:%lf,last_y:%lf", plan[N - 1][0], plan[N - 1][1]);
     }
 
     bool update() {
@@ -335,24 +267,24 @@ public:
         // 主函数，进行路径优化
         Solve();
 
-        path.header.frame_id = "map";
-        path.header.stamp = opt_node->get_clock()->now();
-        for (int i = 0; i < N; i++) {
-            pp.pose.position.x = plan[i][0];
-            pp.pose.position.y = plan[i][1];
-            tf2::Quaternion q_tmp;
-            q_tmp.setRPY(0, 0, plan[i][2]);
-            pp.pose.orientation = tf2::toMsg(q_tmp);
-            path.poses.push_back(pp);
+        // path.header.frame_id = "map";
+        // path.header.stamp = opt_node->get_clock()->now();
+        // for (int i = 0; i < N; i++) {
+        //     pp.pose.position.x = plan[i][0];
+        //     pp.pose.position.y = plan[i][1];
+        //     tf2::Quaternion q_tmp;
+        //     q_tmp.setRPY(0, 0, plan[i][2]);
+        //     pp.pose.orientation = tf2::toMsg(q_tmp);
+        //     path.poses.push_back(pp);
 
-            if (fabs(plan[i][0] - plan[N - 1][0]) < 0.01) {
-                if (fabs(plan[i][1] - plan[N - 1][1]) < 0.01) {
-                    break;
-                }
-            }
-        }
-        auto opt_pub = opt_node->create_publisher<nav_msgs::msg::Path>("opt_path", 10);
-        opt_pub->publish(path);
+        //     if (fabs(plan[i][0] - plan[N - 1][0]) < 0.01) {
+        //         if (fabs(plan[i][1] - plan[N - 1][1]) < 0.01) {
+        //             break;
+        //         }
+        //     }
+        // }
+        // auto opt_pub = opt_node->create_publisher<nav_msgs::msg::Path>("opt_path", 10);
+        // opt_pub->publish(path);
 
         return true;
     }
@@ -365,9 +297,4 @@ private:
     SFC_t SFC;
 
     std::shared_ptr<rclcpp::Node> opt_node = rclcpp::Node::make_shared("optimization");
-
-    // std::shared_ptr<Eigen::MatrixXd> Q_obj, Aeq_obj, Alq_obj, deq_obj, dlq_obj;
-    Eigen::MatrixXd Q_base, Aeq_base, Alq, deq, dlq, basis;
-    Eigen::MatrixXd dummy;
-    std::vector<Eigen::MatrixXd> coef;
 };
