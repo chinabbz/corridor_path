@@ -49,7 +49,7 @@ size_t y_con;
 
 // std::vector<ros::Publisher> way_point_pub;
 
-std::vector<std::array<int, 3> > relative_pair;
+std::vector<std::array<int, 3>> relative_pair;
 std::vector<int> agent_col_num;
 
 class FG_eval {
@@ -88,6 +88,7 @@ public:
 
 class MPCPlanner {
 public:
+    std::shared_ptr<rclcpp::Node> opt_node = rclcpp::Node::make_shared("optimization");
     MPCPlanner(std::shared_ptr<Corridor> _corridor_obj, std::shared_ptr<nav_msgs::msg::Path> _initTrajPlanner_obj)
         : corridor_obj(std::move(_corridor_obj))
         , initTrajPlanner_obj(std::move(_initTrajPlanner_obj))
@@ -116,8 +117,8 @@ public:
 
         // 设定模型变量的数量{L 2*N} {theta N+1} {x 2*N+1} {y 2*N+1}
         size_t n_vars = 2 * N + N + 1 + 2 * (2 * N + 1);
-        // 约束条件的数量：{alpha N}+{x,y 4N-2}(不包括起始和终点位置)
-        size_t n_constraints = N + 4 * N - 2;
+        // 约束条件的数量：{alpha N}+{x,y 4N}(不包括起始位置)
+        size_t n_constraints = N + 4 * N;
 
         // 自变量的初值，除了初始状态其余都设为0
         Dvector vars(n_vars);
@@ -189,10 +190,10 @@ public:
         vars_lowerbound[y_start] = initTraj.poses[0].pose.position.y;
         vars_upperbound[y_start] = initTraj.poses[0].pose.position.y;
 
-        vars_lowerbound[x_start + 2 * N] = initTraj.poses[0].pose.position.x;
-        vars_upperbound[x_start + 2 * N] = initTraj.poses[0].pose.position.x;
-        vars_lowerbound[y_start + 2 * N] = initTraj.poses[0].pose.position.y;
-        vars_upperbound[y_start + 2 * N] = initTraj.poses[0].pose.position.y;
+        vars_lowerbound[x_start + 2 * N] = initTraj.poses.back().pose.position.x;
+        vars_upperbound[x_start + 2 * N] = initTraj.poses.back().pose.position.x;
+        vars_lowerbound[y_start + 2 * N] = initTraj.poses.back().pose.position.y;
+        vars_upperbound[y_start + 2 * N] = initTraj.poses.back().pose.position.y;
 
         vars_lowerbound[theta_start] = startangle;
         vars_upperbound[theta_start] = startangle;
@@ -209,6 +210,8 @@ public:
         // x,y=f(L,theta)
         for (int i = 0; i < 2 * N; i++) {
             constraints_lowerbound[x_con + i] = 0;
+            constraints_upperbound[x_con + i] = 0;
+            constraints_lowerbound[y_con + i] = 0;
             constraints_upperbound[y_con + i] = 0;
         }
         RCLCPP_INFO(opt_node->get_logger(), "constraints bound set done");
@@ -255,15 +258,77 @@ public:
             RCLCPP_INFO(opt_node->get_logger(), "Optimization Fail!");
             RCLCPP_INFO(opt_node->get_logger(), "status:%d ", solution.status);
         }
+        for (int i = 0; i < 2 * N; i++) {
+            std::cout << "L" << i << ":" << solution.x[L_start + i] << std::endl;
+        }
+        for (int i = 0; i < N + 1; i++) {
+            std::cout << "theta" << i << ":" << solution.x[theta_start + i] << std::endl;
+        }
+        // 把每个控制点发布出来看一下
+        auto control_point_node = rclcpp::Node::make_shared("control_point_pub_node");
+        auto control_point_publisher =
+            control_point_node->create_publisher<visualization_msgs::msg::MarkerArray>("control_point", 10);
+        visualization_msgs::msg::MarkerArray points;
+        visualization_msgs::msg::Marker apoint;
         for (int i = 0; i < 2 * N + 1; i++) {
-            std::cout << "x" << i << ":" << solution.x[x_start + i] << std::endl;
+            apoint.header.frame_id = "map";
+            apoint.header.stamp = control_point_node.get()->get_clock()->now();
+            apoint.id = i;
+            apoint.type = visualization_msgs::msg::Marker::CUBE;
+            apoint.scale.x = 0.2;
+            apoint.scale.y = 0.2;
+            apoint.scale.z = 0.1;
+            apoint.color.a = 1.0;
+            apoint.color.r = 255;
+            apoint.color.g = 0;
+            apoint.color.b = 0;
+            // color
+            // if (i % 4 == 0) {
+            //     apoint.color.r = 255;
+            //     apoint.color.g = 0;
+            //     apoint.color.b = 0;
+            //     apoint.color.a = 1.0;
+            // }
+            // if (i % 4 == 1) {
+            //     apoint.color.r = 0;
+            //     apoint.color.g = 255;
+            //     apoint.color.b = 0;
+            //     apoint.color.a = 1.0;
+            // }
+            // if (i % 4 == 2) {
+            //     apoint.color.r = 0;
+            //     apoint.color.g = 0;
+            //     apoint.color.b = 255;
+            //     apoint.color.a = 1.0;
+            // }
+            // if (i % 4 == 3) {
+            //     apoint.color.r = 255;
+            //     apoint.color.g = 255;
+            //     apoint.color.b = 0;
+            //     apoint.color.a = 1.0;
+            // }
+            std::cout << "x,y," << i << ":" << solution.x[x_start + i] << "," << solution.x[y_start + i] << std::endl;
+            apoint.pose.position.x = solution.x[x_start + i];
+            apoint.pose.position.y = solution.x[y_start + i];
+            points.markers.emplace_back(apoint);
+        }
+        control_point_publisher->publish(points);
+        // 发布路径
+        auto opt_path = control_point_node->create_publisher<nav_msgs::msg::Path>("opt_path", 10);
+        nav_msgs::msg::Path path;
+        geometry_msgs::msg::PoseStamped pp;
+        double x_pos, y_pos;
+        vector<std::pair<double, double>> cp(5);
+        for (int i = 0; i < N; i++) {
+            cp[0] =
+                std::make_pair<double, double> solution.x[x_start + 2 * (i - 1)] for (double t = 0; t <= 1; t += 0.01) {
+                x_pos = *t * t * t * t + 4 * t * t * t * (1 - t) * solution.x[x_start + 2 * (i - 1) + 1] +
+                        6 * t * t * (1 - t) * (1 - t) * solution.x[x_start + 2 * i]
+            }
         }
     }
 
     bool update() {
-        nav_msgs::msg::Path path;
-        geometry_msgs::msg::PoseStamped pp;
-
         // 主函数，进行路径优化
         Solve();
 
@@ -295,6 +360,4 @@ private:
 
     nav_msgs::msg::Path initTraj;
     SFC_t SFC;
-
-    std::shared_ptr<rclcpp::Node> opt_node = rclcpp::Node::make_shared("optimization");
 };
