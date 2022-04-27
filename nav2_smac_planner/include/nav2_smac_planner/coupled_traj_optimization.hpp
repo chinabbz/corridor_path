@@ -105,7 +105,7 @@ public:
         // 末位置限制，加在约束函数末尾
         fg[2 + theta_start + N - 1] = vars[x_start + N - 1];
         fg[2 + theta_start + N] = vars[y_start + N - 1];
-        fg[2 + theta_start + N + 1] = vars[theta_start + N - 1];
+        // fg[2 + theta_start + N + 1] = vars[theta_start + N - 1];
     }
 };
 
@@ -157,7 +157,7 @@ public:
         // 状态有3个元素，输入有2个元素
         size_t n_vars = N * 3 + (N - 1) * 2;
         // 约束条件的数量：初始状态3+控制模型3x(N-1)+末状态3
-        size_t n_constraints = (N + 1) * 3;
+        size_t n_constraints = (N + 1) * 3 - 1;
 
         // 自变量的初值
         // SHOULD BE 0 besides initial state.
@@ -243,7 +243,7 @@ public:
         //         break;
         //     }
         // }
-
+        //
         // constraints_lowerbound[x_start] = plan[0][0] - 1e-8;
         // constraints_upperbound[x_start] = plan[0][0] + 1e-8;
         // constraints_lowerbound[y_start] = plan[0][1] - 1e-8;
@@ -269,8 +269,8 @@ public:
         constraints_upperbound[1 + theta_start + N - 1] = plan[N - 1][0];
         constraints_lowerbound[1 + theta_start + N] = plan[N - 1][1];
         constraints_upperbound[1 + theta_start + N] = plan[N - 1][1];
-        constraints_lowerbound[1 + theta_start + N + 1] = plan[N - 1][2];
-        constraints_upperbound[1 + theta_start + N + 1] = plan[N - 1][2];
+        // constraints_lowerbound[1 + theta_start + N + 1] = plan[N - 1][2];
+        // constraints_upperbound[1 + theta_start + N + 1] = plan[N - 1][2];
 
         // 目标函数和约束函数都在这里面定义
         FG_eval fg_eval;

@@ -5,7 +5,7 @@
 #include <eigen3/Eigen/Core>
 
 // time step duration dt in s
-#define DT 0.5
+#define DT 1.0
 
 // Set weights parameters for the cost function
 #define W_X 0.1

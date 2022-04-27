@@ -94,7 +94,7 @@ add_library(${library_name}_2d SHARED
   src/node_2d.cpp
 )
 
-target_link_libraries(${library_name}_2d ${OMPL_LIBRARIES})
+target_link_libraries(${library_name}_2d ${OMPL_LIBRARIES} ipopt)
 target_include_directories(${library_name}_2d PUBLIC ${Eigen3_INCLUDE_DIRS})
 
 ament_target_dependencies(${library_name}_2d
