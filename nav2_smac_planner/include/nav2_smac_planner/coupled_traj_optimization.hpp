@@ -43,7 +43,7 @@ size_t x_start;
 size_t y_start;
 size_t theta_start; // 角度
 size_t L_start;
-size_t alpha_con;
+size_t k_con;
 size_t x_con; //没有第一个点
 size_t y_con;
 
@@ -65,7 +65,13 @@ public:
         }
         // alpha限制
         for (int i = 0; i < N; i++) {
-            fg[1 + alpha_con + i] = PI - CppAD::abs(vars[theta_start + i + 1] - vars[theta_start + i]);
+            AD<double> L1 = vars[L_start + 2 * i];
+            AD<double> L2 = vars[L_start + 2 * i + 1];
+            AD<double> alpha = PI - CppAD::abs(vars[theta_start + i + 1] - vars[theta_start + i]);
+            fg[1 + k_con + i] =
+                2 * CppAD::sin(alpha) / 3 / L1 / CppAD::pow((CppAD::cos(alpha) + 1) * (-0.5) + 1, 3 / 2);
+            fg[1 + k_con + N + i] =
+                2 * CppAD::sin(alpha) / 3 / L2 / CppAD::pow((CppAD::cos(alpha) + 1) * (-0.5) + 1, 3 / 2);
         }
         // x,y限制
         for (int i = 0; i < 2 * N; i++) {
@@ -104,8 +110,8 @@ public:
         x_start = theta_start + N + 1; // x和y都是2*N+1
         y_start = x_start + 2 * N + 1;
 
-        alpha_con = 0;
-        x_con = alpha_con + N; //没有第一个点
+        k_con = 0;
+        x_con = k_con + 2 * N; //没有第一个点
         y_con = x_con + 2 * N;
     }
 
@@ -117,8 +123,8 @@ public:
 
         // 设定模型变量的数量{L 2*N} {theta N+1} {x 2*N+1} {y 2*N+1}
         size_t n_vars = 2 * N + N + 1 + 2 * (2 * N + 1);
-        // 约束条件的数量：{alpha N}+{x,y 4N}(不包括起始位置)
-        size_t n_constraints = N + 4 * N;
+        // 约束条件的数量：{alpha 2*N}+{x,y 4N}(不包括起始位置)
+        size_t n_constraints = 2 * N + 4 * N;
 
         // 自变量的初值，除了初始状态其余都设为0
         Dvector vars(n_vars);
@@ -172,7 +178,7 @@ public:
 
         // 变量的上下限设置
         for (int i = 0; i < 2 * N; i++) {
-            vars_lowerbound[L_start + i] = LMIN;
+            vars_lowerbound[L_start + i] = 0.5f;
             vars_upperbound[L_start + i] = 10e3;
         }
         for (int i = 1; i < N + 1; i++) {
@@ -202,10 +208,10 @@ public:
         // 约束条件的上下限设置
         Dvector constraints_lowerbound(n_constraints);
         Dvector constraints_upperbound(n_constraints);
-        // alpha>alpha_min
-        for (int i = 0; i < N; i++) {
-            constraints_lowerbound[alpha_con + i] = ALPHAMIN;
-            constraints_upperbound[alpha_con + i] = PI + 0.01;
+        // k<=0.5
+        for (int i = 0; i < 2 * N; i++) {
+            constraints_lowerbound[k_con + i] = 0.0f;
+            constraints_upperbound[k_con + i] = KMAX;
         }
         // x,y=f(L,theta)
         for (int i = 0; i < 2 * N; i++) {
@@ -224,7 +230,7 @@ public:
         options += "Numeric tol          1e-5\n";
         options += "String linear_solver mumps\n";
         // Uncomment this if you'd like more print information
-        options += "Integer print_level  1\n";
+        options += "Integer print_level  2\n";
         // NOTE: Setting sparse to true allows the solver to take advantage
         // of sparse routines, this makes the computation MUCH FASTER. If you
         // can uncomment 1 of these and see if it makes a difference or not but
@@ -249,15 +255,16 @@ public:
 
         // Check some of the solution values
         ok &= solution.status == CppAD::ipopt::solve_result<Dvector>::success;
-        auto opt_node = rclcpp::Node::make_shared("optimization");
-
         if (ok) {
             RCLCPP_INFO(opt_node->get_logger(), "Optimization Success!");
             RCLCPP_INFO(opt_node->get_logger(), "Cost:%lf ", solution.obj_value);
         } else {
             RCLCPP_INFO(opt_node->get_logger(), "Optimization Fail!");
             RCLCPP_INFO(opt_node->get_logger(), "status:%d ", solution.status);
+            return;
         }
+
+        auto opt_node = rclcpp::Node::make_shared("optimization");
         for (int i = 0; i < 2 * N; i++) {
             std::cout << "L" << i << ":" << solution.x[L_start + i] << std::endl;
         }
@@ -282,31 +289,6 @@ public:
             apoint.color.r = 255;
             apoint.color.g = 0;
             apoint.color.b = 0;
-            // color
-            // if (i % 4 == 0) {
-            //     apoint.color.r = 255;
-            //     apoint.color.g = 0;
-            //     apoint.color.b = 0;
-            //     apoint.color.a = 1.0;
-            // }
-            // if (i % 4 == 1) {
-            //     apoint.color.r = 0;
-            //     apoint.color.g = 255;
-            //     apoint.color.b = 0;
-            //     apoint.color.a = 1.0;
-            // }
-            // if (i % 4 == 2) {
-            //     apoint.color.r = 0;
-            //     apoint.color.g = 0;
-            //     apoint.color.b = 255;
-            //     apoint.color.a = 1.0;
-            // }
-            // if (i % 4 == 3) {
-            //     apoint.color.r = 255;
-            //     apoint.color.g = 255;
-            //     apoint.color.b = 0;
-            //     apoint.color.a = 1.0;
-            // }
             std::cout << "x,y," << i << ":" << solution.x[x_start + i] << "," << solution.x[y_start + i] << std::endl;
             apoint.pose.position.x = solution.x[x_start + i];
             apoint.pose.position.y = solution.x[y_start + i];
@@ -316,16 +298,36 @@ public:
         // 发布路径
         auto opt_path = control_point_node->create_publisher<nav_msgs::msg::Path>("opt_path", 10);
         nav_msgs::msg::Path path;
+        path.header.frame_id = "map";
+        path.header.stamp = control_point_node->get_clock()->now();
         geometry_msgs::msg::PoseStamped pp;
         double x_pos, y_pos;
-        vector<std::pair<double, double>> cp(5);
-        for (int i = 0; i < N; i++) {
-            cp[0] =
-                std::make_pair<double, double> solution.x[x_start + 2 * (i - 1)] for (double t = 0; t <= 1; t += 0.01) {
-                x_pos = *t * t * t * t + 4 * t * t * t * (1 - t) * solution.x[x_start + 2 * (i - 1) + 1] +
-                        6 * t * t * (1 - t) * (1 - t) * solution.x[x_start + 2 * i]
+        vector<std::pair<double, double>> cp(5); // 控制点的x,y坐标
+        for (int box_i = 0; box_i < N; box_i++) {
+            cp[0] = std::make_pair(solution.x[x_start + 2 * box_i], solution.x[y_start + 2 * box_i]);
+            cp[1] = std::make_pair((solution.x[x_start + 2 * box_i] + solution.x[x_start + 2 * box_i + 1]) / 2,
+                                   (solution.x[y_start + 2 * box_i] + solution.x[y_start + 2 * box_i + 1]) / 2);
+            cp[2] = std::make_pair(solution.x[x_start + 2 * box_i + 1], solution.x[y_start + 2 * box_i + 1]);
+            cp[3] = std::make_pair((solution.x[x_start + 2 * box_i + 1] + solution.x[x_start + 2 * box_i + 2]) / 2,
+                                   (solution.x[y_start + 2 * box_i + 1] + solution.x[y_start + 2 * box_i + 2]) / 2);
+            cp[4] = std::make_pair(solution.x[x_start + 2 * box_i + 2], solution.x[y_start + 2 * box_i + 2]);
+            for (double t = 0; t <= 1; t += 0.01) {
+                x_pos = (1 - t) * (1 - t) * (1 - t) * (1 - t) * cp[0].first;
+                x_pos += 4 * t * (1 - t) * (1 - t) * (1 - t) * cp[1].first;
+                x_pos += 6 * t * t * (1 - t) * (1 - t) * cp[2].first;
+                x_pos += 4 * t * t * t * (1 - t) * cp[3].first;
+                x_pos += t * t * t * t * cp[4].first;
+                y_pos = (1 - t) * (1 - t) * (1 - t) * (1 - t) * cp[0].second;
+                y_pos += 4 * t * (1 - t) * (1 - t) * (1 - t) * cp[1].second;
+                y_pos += 6 * t * t * (1 - t) * (1 - t) * cp[2].second;
+                y_pos += 4 * t * t * t * (1 - t) * cp[3].second;
+                y_pos += t * t * t * t * cp[4].second;
+                pp.pose.position.x = x_pos;
+                pp.pose.position.y = y_pos;
+                path.poses.emplace_back(pp);
             }
         }
+        opt_path->publish(path);
     }
 
     bool update() {

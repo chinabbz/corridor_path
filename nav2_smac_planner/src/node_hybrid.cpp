@@ -428,8 +428,8 @@ float NodeHybrid::getObstacleHeuristic(const Coordinates &node_coords, const Coo
             current_accumulated_cost = last_accumulated_cost + travel_cost;
 
             // if neighbor path is better and non-lethal, set new cost and add to queue
-            // 如果邻居的路径更好且非致命
-            if (new_idx > 0 && new_idx < size_x * size_y && cost < INSCRIBED) {
+            // 如果邻居的路径更好且不和障碍物碰撞
+            if (new_idx > 0 && new_idx < size_x * size_y && cost < 1.0) {
                 my = new_idx / size_x;
                 mx = new_idx - (my * size_x);
 

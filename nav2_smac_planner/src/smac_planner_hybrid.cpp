@@ -142,10 +142,10 @@ void SmacPlannerHybrid::configure(const rclcpp_lifecycle::LifecycleNode::WeakPtr
     }
     const double minimum_turning_radius_global_coords = _search_info.minimum_turning_radius;
     // 最小转弯半径
-    _search_info.minimum_turning_radius =
-        _search_info.minimum_turning_radius / (_costmap->getResolution() * _downsampling_factor);
-    _lookup_table_dim =
-        static_cast<float>(_lookup_table_size) / static_cast<float>(_costmap->getResolution() * _downsampling_factor);
+    _search_info.minimum_turning_radius = _search_info.minimum_turning_radius / _downsampling_factor;
+    // _search_info.minimum_turning_radius / (_costmap->getResolution() * _downsampling_factor);
+    _lookup_table_dim = static_cast<float>(_lookup_table_size) / _downsampling_factor;
+    // static_cast<float>(_lookup_table_size) / static_cast<float>(_costmap->getResolution() * _downsampling_factor);
 
     // Make sure its a whole number
     _lookup_table_dim = static_cast<float>(static_cast<int>(_lookup_table_dim));
@@ -390,28 +390,27 @@ nav_msgs::msg::Path SmacPlannerHybrid::createPlan(const geometry_msgs::msg::Pose
             abox.color.r = 255;
             abox.color.g = 0;
             abox.color.b = 0;
-            abox.color.a = 1.0;
         }
         if (i % 4 == 1) {
             abox.color.r = 0;
             abox.color.g = 255;
             abox.color.b = 0;
-            abox.color.a = 1.0;
         }
         if (i % 4 == 2) {
             abox.color.r = 0;
             abox.color.g = 0;
             abox.color.b = 255;
-            abox.color.a = 1.0;
         }
         if (i % 4 == 3) {
             abox.color.r = 255;
             abox.color.g = 255;
             abox.color.b = 0;
-            abox.color.a = 1.0;
         }
         abox.pose.position.x = (corridor_obj.get()->SFC[i].first[2] + corridor_obj.get()->SFC[i].first[0]) / 2;
         abox.pose.position.y = (corridor_obj.get()->SFC[i].first[3] + corridor_obj.get()->SFC[i].first[1]) / 2;
+        std::cout << i << " corridor:" << corridor_obj.get()->SFC[i].first[0] << ","
+                  << corridor_obj.get()->SFC[i].first[1] << "," << corridor_obj.get()->SFC[i].first[2] << ","
+                  << corridor_obj.get()->SFC[i].first[3] << std::endl;
         boxes.markers.emplace_back(abox);
     }
     corridor_publisher->publish(boxes);
@@ -516,10 +515,10 @@ void SmacPlannerHybrid::on_parameter_event_callback(const rcl_interfaces::msg::P
             _downsampling_factor = 1;
         }
         const double minimum_turning_radius_global_coords = _search_info.minimum_turning_radius;
-        _search_info.minimum_turning_radius =
-            _search_info.minimum_turning_radius / (_costmap->getResolution() * _downsampling_factor);
-        _lookup_table_dim = static_cast<float>(_lookup_table_size) /
-                            static_cast<float>(_costmap->getResolution() * _downsampling_factor);
+        _search_info.minimum_turning_radius = _search_info.minimum_turning_radius / _downsampling_factor;
+        // _search_info.minimum_turning_radius / (_costmap->getResolution() * _downsampling_factor);
+        _lookup_table_dim = static_cast<float>(_lookup_table_size) / _downsampling_factor;
+        // static_cast<float>(_costmap->getResolution() * _downsampling_factor);
 
         // Make sure its a whole number
         _lookup_table_dim = static_cast<float>(static_cast<int>(_lookup_table_dim));
