@@ -63,7 +63,7 @@ public:
         for (int i = 0; i < 2 * N; i++) {
             fg[0] += vars[L_start + i];
         }
-        // alpha限制
+        // 曲率限制
         for (int i = 0; i < N; i++) {
             AD<double> L1 = vars[L_start + 2 * i];
             AD<double> L2 = vars[L_start + 2 * i + 1];
@@ -132,6 +132,7 @@ public:
         Dvector vars_upperbound(n_vars);
 
         double startangle = tf2::getYaw(initTraj.poses[0].pose.orientation);
+        double goalangle = tf2::getYaw(initTraj.poses.back().pose.orientation);
 
         // 提前写好x和y的上下界
         vector<double> x_lowerbound, x_upperbound, y_lowerbound, y_upperbound;
@@ -161,7 +162,6 @@ public:
         for (int i = 0; i < 2 * N; i++) {
             vars[L_start + i] = LMIN;
         }
-        // 暂时未限制末位置的角度
         for (int i = 1; i < N + 1; i++) {
             vars[theta_start + i] = 0;
         }
@@ -178,10 +178,10 @@ public:
 
         // 变量的上下限设置
         for (int i = 0; i < 2 * N; i++) {
-            vars_lowerbound[L_start + i] = 0.5f;
+            vars_lowerbound[L_start + i] = 0.0f;
             vars_upperbound[L_start + i] = 10e3;
         }
-        for (int i = 1; i < N + 1; i++) {
+        for (int i = 1; i < N; i++) {
             vars_lowerbound[theta_start + i] = -PI;
             vars_upperbound[theta_start + i] = PI;
         }
@@ -201,8 +201,11 @@ public:
         vars_lowerbound[y_start + 2 * N] = initTraj.poses.back().pose.position.y;
         vars_upperbound[y_start + 2 * N] = initTraj.poses.back().pose.position.y;
 
+        // 限制末位置的角度
         vars_lowerbound[theta_start] = startangle;
         vars_upperbound[theta_start] = startangle;
+        vars_lowerbound[theta_start + N] = goalangle;
+        vars_upperbound[theta_start + N] = goalangle;
         RCLCPP_INFO(opt_node->get_logger(), "variant bound set done");
 
         // 约束条件的上下限设置
@@ -230,7 +233,7 @@ public:
         options += "Numeric tol          1e-5\n";
         options += "String linear_solver mumps\n";
         // Uncomment this if you'd like more print information
-        options += "Integer print_level  2\n";
+        options += "Integer print_level  4\n";
         // NOTE: Setting sparse to true allows the solver to take advantage
         // of sparse routines, this makes the computation MUCH FASTER. If you
         // can uncomment 1 of these and see if it makes a difference or not but

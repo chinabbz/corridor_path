@@ -22,11 +22,10 @@ struct Point {
 };
 
 // Set the timestep length
-size_t N;
 typedef std::vector<std::pair<std::vector<double>, double>> SFC_t;
 
 double plan[500][5];
-double quad_size = 0.3; //机器人半径
+int N;
 
 class Corridor {
 public:
@@ -37,17 +36,12 @@ public:
              std::shared_ptr<nav2_costmap_2d::Costmap2D> _costmap_obj)
         : initTrajPlanner_obj(std::move(_initTrajPlanner_obj)), costmap_obj(std::move(_costmap_obj)) {
         initTraj = *initTrajPlanner_obj.get();
-        for (int i = 0; i < initTraj.poses.size(); i++) {
-            T.emplace_back(i * 0.5); // 时间，假设每段分配0.5s
-        }
-        makespan = T.back(); // 完成所需时间
-        M = T.size() - 1;    // the number of segments
+        N = initTraj.poses.size() - 1; // the number of segments
 
-        for (int i = 0; i < M; i++) {
+        for (int i = 0; i < N; i++) {
             plan[i][0] = initTraj.poses[i].pose.position.x;
             plan[i][1] = initTraj.poses[i].pose.position.y;
         }
-        N = M;
     }
 
     bool update(bool log) { return updateObsBox(log); }
@@ -57,9 +51,6 @@ private:
     std::shared_ptr<nav2_costmap_2d::Costmap2D> costmap_obj;  // 地图
 
     nav_msgs::msg::Path initTraj;
-    std::vector<double> T;
-    double makespan;
-    int M;
 
     // 判断box中是否有障碍物，有的话返回true
     bool isObstacleInBox(const std::vector<double>& box) {
@@ -101,7 +92,6 @@ private:
                 }
             }
         }
-
         return false;
     }
 
@@ -117,16 +107,12 @@ private:
         for (int bound : box_int) {
             box.emplace_back(bound * costmap_obj.get()->getResolution());
         }
-        return box[0] > -costmap_obj.get()->getSizeInMetersX() - SP_EPSILON &&
-               box[1] > -costmap_obj.get()->getSizeInMetersY() - SP_EPSILON &&
+        return box[0] > costmap_obj.get()->getOriginX() && box[1] > costmap_obj.get()->getOriginY() &&
                box[2] < costmap_obj.get()->getSizeInMetersX() + SP_EPSILON &&
                box[3] < costmap_obj.get()->getSizeInMetersY() + SP_EPSILON;
     }
 
     bool isPointInBox(const Point& point, const std::vector<double>& box) {
-        // return point.x > box[0] - SP_EPSILON && point.y > box[1] - SP_EPSILON && point.x < box[2] + SP_EPSILON &&
-        //        point.y < box[3] + SP_EPSILON;
-        // return point.x > box[0] && point.y > box[1] && point.x < box[2] && point.y < box[3];
         if (point.x < box[0]) {
             std::cout << point.x << "<" << box[0] << std::endl;
             return false;
@@ -150,7 +136,7 @@ private:
         double res = costmap_obj.get()->getResolution();
         std::vector<int> box_int;
         for (double bound : box) {
-            box_int.emplace_back(round(bound / res)); //将原来的边界转化为以res为基元的整形边界
+            box_int.emplace_back(round(bound / res)); //将原来的边界转化为以res为步长的整形边界
         }
         std::vector<int> box_update;
         std::vector<bool> axis_cand(4, true); // 左下右上
@@ -161,12 +147,14 @@ private:
         if (isObstacleInBox(box) || !isBoxInBoundary(box)) {
             return;
         }
+
         while (left_axis > 0) {
             i = (i + 1) % 4;
             if (axis_cand[i] == false) {
                 continue;
             }
             box_update = box_int;
+
             switch (i) {
                 case 0:
                     box_update[2] = box_int[0];
@@ -187,9 +175,10 @@ private:
                 default:
                     break;
             }
+
             // std::cout << " box_update " << i << ":" << box_update[0] << "," << box_update[1] << "," << box_update[2]
             //           << "," << box_update[3] << std::endl;
-            if (!isObstacleInBox(box_update) && isBoxInBoundary(box_update)) {
+            if (isBoxInBoundary(box_update) && !isObstacleInBox(box_update)) {
                 box_int[i] = box_update[i];
             } else {
                 axis_cand[i] = false;
@@ -217,7 +206,7 @@ private:
             x_next = plan[i + 1][0];
             y_next = plan[i + 1][1];
 
-            // 判断当前点是否在上一个box中
+            // 判断下一个点是否在上一个box中
             if (isPointInBox(Point(x_next, y_next), box_prev)) {
                 continue;
             }
@@ -246,7 +235,9 @@ private:
             }
 
             // box加入到走廊
-            SFC.emplace_back(std::make_pair(box, i + 1));
+            SFC.emplace_back(std::make_pair(box, i)); // SFC元素的second表示该box中第一个路径点的index
+            std::cout << i << " corridor:" << initTraj.poses[i].pose.position.x << ","
+                      << initTraj.poses[i].pose.position.y << std::endl;
             // std::cout << i << " corridor:" << box[0] << "," << box[1] << "," << box[2] << "," << box[3] << std::endl;
 
             box_prev = box;

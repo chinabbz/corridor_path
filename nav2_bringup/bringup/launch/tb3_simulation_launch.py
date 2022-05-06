@@ -63,7 +63,7 @@ def generate_launch_description():
 
     declare_map_yaml_cmd = DeclareLaunchArgument(
         'map',
-        default_value=os.path.join(bringup_dir, 'maps/s_bend.yaml'),
+        default_value=os.path.join(bringup_dir, 'maps/map_demo.yaml'),
         # default_value=os.path.join(bringup_dir, 'maps', 'turtlebot3_world.yaml'),
         # default_value=os.path.join(bringup_dir, 'maps', 'test.yaml'),
         description='Full path to map file to load')

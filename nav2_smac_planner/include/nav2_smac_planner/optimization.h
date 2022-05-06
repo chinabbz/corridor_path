@@ -6,7 +6,7 @@
 
 #define LMIN 2.0
 #define ALPHAMIN 0.5 // 30度
-#define KMAX 2.0     // 曲率>0.5
+#define KMAX 0.5     // 曲率<0.5
 
 using namespace std;
 
