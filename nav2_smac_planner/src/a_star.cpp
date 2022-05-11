@@ -201,6 +201,7 @@ bool AStarAlgorithm<NodeT>::createPath(CoordinateVector& path, int& iterations, 
         return true;
     };
 
+    // 算法主要循环
     while (iterations < getMaxIterations() && !_queue.empty()) {
         // 1) Pick Nbest from O s.t. min(f(Nbest)), remove from queue
         current_node = getNextNode();
@@ -409,14 +410,16 @@ typename AStarAlgorithm<NodeT>::NodePtr AStarAlgorithm<NodeT>::tryAnalyticExpans
     // This must be a NodeHybrid or NodeLattice if we are using these motion models
     if (_motion_model == MotionModel::DUBIN || _motion_model == MotionModel::REEDS_SHEPP ||
         _motion_model == MotionModel::STATE_LATTICE) {
-        // 如果更近的话就需要扩展得更频繁
         const Coordinates node_coords = NodeT::getCoords(current_node->getIndex(), getSizeX(), getSizeDim3());
+        // 计算目前为止，到目标点的最小的distance（obs_h和dis_h的最大值）
         closest_distance = std::min(
             closest_distance, static_cast<int>(NodeT::getHeuristicCost(node_coords, _goal_coordinates, _costmap)));
 
         // We want to expand at a rate of d/expansion_ratio,
         // but check to see if we are so close that we would be expanding every iteration
         // If so, limit it to the expansion ratio (rounded up)
+        // 如果更近的话就需要扩展得更频繁，
+        // 取max是因为如果足够近，那么需要每次迭代都进行扩展
         int desired_iterations = std::max(static_cast<int>(closest_distance / _search_info.analytic_expansion_ratio),
                                           static_cast<int>(std::ceil(_search_info.analytic_expansion_ratio)));
 

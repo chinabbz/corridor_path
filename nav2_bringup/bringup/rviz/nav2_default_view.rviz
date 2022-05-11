@@ -7,9 +7,10 @@ Panels:
         - /Global Options1
         - /TF1/Frames1
         - /TF1/Tree1
+        - /Global Planner1
         - /Global Planner1/Global Costmap1/Topic1
-        - /Global Planner1/Path1
         - /MarkerArray2
+        - /MarkerArray3
       Splitter Ratio: 0.5833333134651184
     Tree Height: 462
   - Class: rviz_common/Selection
@@ -295,7 +296,7 @@ Visualization Manager:
             Filter size: 10
             History Policy: Keep Last
             Reliability Policy: Reliable
-            Value: /plan
+            Value: unsmoothed_plan
           Value: true
         - Alpha: 1
           Autocompute Intensity Bounds: true
@@ -478,6 +479,18 @@ Visualization Manager:
         Reliability Policy: Reliable
         Value: control_point
       Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: MarkerArray
+      Namespaces:
+        "": true
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: reverse_point
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -525,11 +538,11 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Scale: 26.473453521728516
+      Scale: 53.54155731201172
       Target Frame: <Fixed Frame>
       Value: TopDownOrtho (rviz_default_plugins)
-      X: 13.16528034210205
-      Y: 9.921182632446289
+      X: 6.327005863189697
+      Y: 10.540264129638672
     Saved: ~
 Window Geometry:
   Displays:

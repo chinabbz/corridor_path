@@ -110,42 +110,20 @@ void SmacPlannerHybrid::configure(const rclcpp_lifecycle::LifecycleNode::WeakPtr
         _max_iterations = std::numeric_limits<int>::max();
     }
 
-    // Get parameters from json
-    float W, L, Theading, Rmid;
-    int Max_SteerAngle;
-
-    node->declare_parameter<int>("Max_SteerAngle");
-    node->declare_parameter<float>("W");
-    node->declare_parameter<float>("L");
-    node->declare_parameter<float>("Theading");
-    node->declare_parameter<float>("Rmid");
-    node->get_parameter_or<int>("Max_SteerAngle", Max_SteerAngle, 40);
-    node->get_parameter_or<float>("W", W, 1.69);
-    node->get_parameter_or<float>("L", L, 4.07);
-    node->get_parameter_or<float>("Theading", Theading, 0.125);
-    node->get_parameter_or<float>("Rmid", Rmid, 6.0);
-    // 从json文件中获取了结构参数后要从中取最大的转弯半径
-    float turning_radius_from_MaxSteerAngle = L / 2 / tan(Max_SteerAngle / 180.0 * 3.14);
-    float turning_radius_from_Theading = 1 / Theading;
-    float turning_radius_from_Rmid = Rmid;
-    _search_info.minimum_turning_radius =
-        std::max({_search_info.minimum_turning_radius, turning_radius_from_MaxSteerAngle, turning_radius_from_Theading,
-                  turning_radius_from_Rmid});
-    RCLCPP_INFO(node->get_logger(), "turning_radius_from_MaxSteerAngle is %f", turning_radius_from_MaxSteerAngle);
-    RCLCPP_INFO(node->get_logger(), "turning_radius_from_Theading is %f", turning_radius_from_Theading);
-    RCLCPP_INFO(node->get_logger(), "turning_radius_from_Rmid is %f", turning_radius_from_Rmid);
-    RCLCPP_INFO(node->get_logger(), "minimum turning radius is %f", _search_info.minimum_turning_radius);
-
     // convert to grid coordinates
     if (!_downsample_costmap) {
         _downsampling_factor = 1;
     }
     const double minimum_turning_radius_global_coords = _search_info.minimum_turning_radius;
     // 最小转弯半径
-    _search_info.minimum_turning_radius = _search_info.minimum_turning_radius / _downsampling_factor;
-    // _search_info.minimum_turning_radius / (_costmap->getResolution() * _downsampling_factor);
+    // _search_info.minimum_turning_radius = _search_info.minimum_turning_radius / _downsampling_factor;
+    _search_info.minimum_turning_radius =
+        _search_info.minimum_turning_radius / (_costmap->getResolution() * _downsampling_factor);
     _lookup_table_dim = static_cast<float>(_lookup_table_size) / _downsampling_factor;
-    // static_cast<float>(_lookup_table_size) / static_cast<float>(_costmap->getResolution() * _downsampling_factor);
+    // _lookup_table_dim =
+    //     static_cast<float>(_lookup_table_size) / static_cast<float>(_costmap->getResolution() *
+    //     _downsampling_factor);
+    RCLCPP_INFO(_logger, "minimum_turning_radius is: %f", _search_info.minimum_turning_radius);
 
     // Make sure its a whole number
     _lookup_table_dim = static_cast<float>(static_cast<int>(_lookup_table_dim));
@@ -305,7 +283,8 @@ nav_msgs::msg::Path SmacPlannerHybrid::createPlan(const geometry_msgs::msg::Pose
     }
 
     // Convert to world coordinates
-    plan.poses.reserve(path.size());
+    plan.poses.reserve(path.size() + 1);
+    plan.poses.emplace_back(start);
     for (int i = path.size() - 1; i >= 0; --i) {
         pose.pose = getWorldCoords(path[i].x, path[i].y, costmap);
         pose.pose.orientation = getWorldOrientation(path[i].theta, _angle_bin_size);
@@ -340,42 +319,126 @@ nav_msgs::msg::Path SmacPlannerHybrid::createPlan(const geometry_msgs::msg::Pose
     std::cout << "It took " << time_span2.count() * 1000 << " milliseconds to smooth path." << std::endl;
 #endif
 
-    double dx, dy, dis;
-    auto path_node = rclcpp::Node::make_shared("path_pub");
-    auto path_pub = path_node->create_publisher<nav_msgs::msg::Path>("path_unifor", 10);
-    nav_msgs::msg::Path path_uniformity;
-    path_uniformity.header.frame_id = "map";
-    path_uniformity.header.stamp = path_node->get_clock()->now();
-    path_uniformity.poses.emplace_back(plan.poses[0]);
-    for (int i = 0; i < plan.poses.size(); i++) {
-        for (int j = i + 1; j < plan.poses.size() - 1; j++) {
-            dx = plan.poses[j].pose.position.x - plan.poses[i].pose.position.x;
-            dy = plan.poses[j].pose.position.y - plan.poses[i].pose.position.y;
-            dis = dx * dx + dy * dy;
-            // 0.2m一个点
-            if (dis > 0.04) {
-                path_uniformity.poses.emplace_back(plan.poses[j]);
-                i = j;
-                break;
-            }
-        }
-    }
-    path_uniformity.poses.emplace_back(plan.poses[plan.poses.size() - 1]);
+    // 原来的path路径点之间距离不一致
+    // {
+    //     double dx, dy, dis;
+    //     auto path_node = rclcpp::Node::make_shared("path_pub");
+    //     auto path_pub = path_node->create_publisher<nav_msgs::msg::Path>("path_unifor", 10);
+    //     nav_msgs::msg::Path path_uniformity;
+    //     path_uniformity.header.frame_id = "map";
+    //     path_uniformity.header.stamp = path_node->get_clock()->now();
+    //     path_uniformity.poses.emplace_back(plan.poses[0]);
+    //     for (int i = 0; i < plan.poses.size(); i++) {
+    //         for (int j = i + 1; j < plan.poses.size() - 1; j++) {
+    //             dx = plan.poses[j].pose.position.x - plan.poses[i].pose.position.x;
+    //             dy = plan.poses[j].pose.position.y - plan.poses[i].pose.position.y;
+    //             dis = dx * dx + dy * dy;
+    //             // 0.2m一个点
+    //             if (dis > 0.04) {
+    //                 path_uniformity.poses.emplace_back(plan.poses[j]);
+    //                 i = j;
+    //                 break;
+    //             }
+    //         }
+    //     }
+    //     path_uniformity.poses.emplace_back(plan.poses[plan.poses.size() - 1]);
 
-    path_pub->publish(path_uniformity);
+    //     path_pub->publish(path_uniformity);
+    // }
+
+    auto corridor_node = rclcpp::Node::make_shared("corridor_publisher");
+
+    // 判断每个路径点是前进还是后退
+    auto reverse_publisher = corridor_node->create_publisher<visualization_msgs::msg::MarkerArray>("reverse_point", 10);
+    visualization_msgs::msg::MarkerArray points;
+    visualization_msgs::msg::Marker apoint;
+    apoint.header.frame_id = "map";
+    apoint.header.stamp = corridor_node.get()->get_clock()->now();
+    apoint.action = visualization_msgs::msg::Marker::DELETEALL;
+    points.markers.emplace_back(apoint);
+    reverse_publisher->publish(points);
+    // 把每个reverse点发布出来看一下
+    apoint.action = visualization_msgs::msg::Marker::ADD;
+    points.markers.clear();
+    apoint.type = visualization_msgs::msg::Marker::CUBE;
+    apoint.scale.x = 0.1;
+    apoint.scale.y = 0.1;
+    apoint.scale.z = 0.1;
+    apoint.color.a = 1.0;
+    apoint.color.r = 0;
+    apoint.color.g = 0;
+    apoint.color.b = 0;
+    vector<bool> for_or_back;
+    double last_yaw = tf2::getYaw(start.pose.orientation), last_x = start.pose.position.x,
+           last_y = start.pose.position.y;
+    for (int i = 0; i < plan.poses.size() - 1; i++) {
+        double now_x = plan.poses[i].pose.position.x;
+        double now_y = plan.poses[i].pose.position.y;
+        double now_yaw = tf2::getYaw(plan.poses[i].pose.orientation);
+
+        unsigned int mx, my;
+        costmap->worldToMap(now_x, now_y, mx, my);
+        std::cout << i << ":(" << now_x << "," << now_y << "):" << static_cast<int>(costmap->getCost(mx, my))
+                  << std::endl;
+        // 判断是前进还是后退
+        if (now_yaw >= -M_PI_4 && now_yaw <= M_PI_4) { // 朝向x正方向
+            if (plan.poses[i + 1].pose.position.x > now_x)
+                for_or_back.emplace_back(true);
+            else
+                for_or_back.emplace_back(false);
+        }
+        if (now_yaw >= M_PI_4 * 3 || now_yaw <= -M_PI_4 * 3) { // 朝向x负方向
+            if (plan.poses[i + 1].pose.position.x < now_x)
+                for_or_back.emplace_back(true);
+            else
+                for_or_back.emplace_back(false);
+        }
+        if (now_yaw >= M_PI_4 && now_yaw <= M_PI_4 * 3) { // 朝向y正方向
+            if (plan.poses[i + 1].pose.position.y > now_y)
+                for_or_back.emplace_back(true);
+            else
+                for_or_back.emplace_back(false);
+        }
+        if (now_yaw >= -M_PI_4 * 3 && now_yaw <= -M_PI_4) { // 朝向y负方向
+            if (plan.poses[i + 1].pose.position.y < now_y)
+                for_or_back.emplace_back(true);
+            else
+                for_or_back.emplace_back(false);
+        }
+        apoint.id = i;
+        apoint.pose.position.x = now_x;
+        apoint.pose.position.y = now_y;
+        if (for_or_back.back()) {
+            apoint.color.g = 255;
+        } else {
+            apoint.color.b = 255;
+        }
+        points.markers.emplace_back(apoint);
+    }
+    reverse_publisher->publish(points);
 
     // 建立走廊
     std::shared_ptr<Corridor> corridor_obj; // 走廊
-    corridor_obj.reset(new Corridor(std::make_shared<nav_msgs::msg::Path>(path_uniformity),
+    corridor_obj.reset(new Corridor(std::make_shared<nav_msgs::msg::Path>(plan),
                                     std::make_shared<nav2_costmap_2d::Costmap2D>(*costmap)));
-    if (!corridor_obj.get()->update(true)) {
+    if (!corridor_obj.get()->update(for_or_back)) {
         RCLCPP_ERROR(_logger, "no corridor!!!");
     }
-    // 发布走廊
-    auto corridor_node = rclcpp::Node::make_shared("corridor_publisher");
+    // corridor_obj.get()->SFC.emplace_back(corridor_obj.get()->SFC.back());
+    // corridor_obj.get()->SFC.back().second = -1;
+    // 清除之前的走廊
     auto corridor_publisher = corridor_node->create_publisher<visualization_msgs::msg::MarkerArray>("corridor", 10);
     visualization_msgs::msg::MarkerArray boxes;
     visualization_msgs::msg::Marker abox;
+    abox.header.frame_id = "map";
+    abox.header.stamp = corridor_node.get()->get_clock()->now();
+    abox.id = 0;
+    abox.action = visualization_msgs::msg::Marker::DELETEALL;
+    boxes.markers.emplace_back(abox);
+    corridor_publisher->publish(boxes);
+    // 发布走廊
+    boxes.markers.clear();
+    abox.action = visualization_msgs::msg::Marker::ADD;
     for (int i = 0; i < corridor_obj.get()->SFC.size(); i++) {
         abox.header.frame_id = "map";
         abox.header.stamp = corridor_node.get()->get_clock()->now();
@@ -408,20 +471,19 @@ nav_msgs::msg::Path SmacPlannerHybrid::createPlan(const geometry_msgs::msg::Pose
         }
         abox.pose.position.x = (corridor_obj.get()->SFC[i].first[2] + corridor_obj.get()->SFC[i].first[0]) / 2;
         abox.pose.position.y = (corridor_obj.get()->SFC[i].first[3] + corridor_obj.get()->SFC[i].first[1]) / 2;
-        std::cout << i << " corridor:" << corridor_obj.get()->SFC[i].first[0] << ","
-                  << corridor_obj.get()->SFC[i].first[1] << "," << corridor_obj.get()->SFC[i].first[2] << ","
-                  << corridor_obj.get()->SFC[i].first[3] << std::endl;
+        std::cout << i << " corridor:(" << corridor_obj.get()->SFC[i].first[0] << ","
+                  << corridor_obj.get()->SFC[i].first[1] << "),(" << corridor_obj.get()->SFC[i].first[2] << ","
+                  << corridor_obj.get()->SFC[i].first[3] << ")," << corridor_obj.get()->SFC[i].second << std::endl;
         boxes.markers.emplace_back(abox);
     }
     corridor_publisher->publish(boxes);
     // 优化
+    std::cout << "ready to optimization" << std::endl;
     std::shared_ptr<MPCPlanner> MPCPlanner_obj; // 轨迹优化
-    MPCPlanner_obj.reset(new MPCPlanner(corridor_obj, std::make_shared<nav_msgs::msg::Path>(path_uniformity)));
-    if (!MPCPlanner_obj.get()->update()) {
-        RCLCPP_ERROR(_logger, "no corridor!!!");
-    }
+    MPCPlanner_obj.reset(new MPCPlanner(corridor_obj, std::make_shared<nav_msgs::msg::Path>(plan)));
+    MPCPlanner_obj.get()->update();
     return plan;
-}
+} // namespace nav2_smac_planner
 
 void SmacPlannerHybrid::on_parameter_event_callback(const rcl_interfaces::msg::ParameterEvent::SharedPtr event) {
     std::lock_guard<std::mutex> lock_reinit(_mutex);

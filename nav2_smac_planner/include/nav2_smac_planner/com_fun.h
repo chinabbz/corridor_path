@@ -55,9 +55,11 @@ double Quat_to_Yaw(geometry_msgs::msg::Quaternion msg_quat) {
 }
 
 // Calculate Distance in XY plane
-double DIS_XY(double pa_x, double pa_y, double pb_x, double pb_y) {
-    double distance;
-    distance = pow(pow(pa_x - pb_x, 2) + pow(pa_y - pb_y, 2), 0.5);
+double DIS_XY(geometry_msgs::msg::PoseStamped pa, geometry_msgs::msg::PoseStamped pb) {
+    double distance, dx, dy;
+    dx = pa.pose.position.x - pb.pose.position.x;
+    dy = pa.pose.position.y - pb.pose.position.y;
+    distance = sqrt(dx * dx + dy * dy);
     return distance;
 }
 

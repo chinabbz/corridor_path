@@ -156,6 +156,17 @@ void HybridMotionTable::initReedsShepp(unsigned int &size_x_in, unsigned int & /
     min_turning_radius = search_info.minimum_turning_radius;
     motion_model = MotionModel::REEDS_SHEPP;
 
+    // 角度必须满足3个要求:
+    // 1) 是根据bin_size递增的
+    // 2) 弦长(chord length)必须大于sqrt（2）才能离开当前单元格
+    // 3) 必须考虑最大曲率，以最小转角表示 maximum curvature must be respected, represented by minimum turning angle
+    // Thusly:
+    // 在半径最小转角的圆上，我们需要选择弦长>sqrt（2）的运动参数，并且是bin大小的增量
+    // On circle of radius minimum turning angle, we need select motion primatives
+    // with chord length > sqrt(2) and be an increment of our bin size
+    //
+    // chord >= sqrt(2) >= 2 * R * sin (angle / 2); where angle / N = quantized bin size
+    // Thusly: angle <= 2.0 * asin(sqrt(2) / (2 * R))
     float angle = 2.0 * asin(sqrt(2.0) / (2 * min_turning_radius));
     bin_size = 2.0f * static_cast<float>(M_PI) / static_cast<float>(num_angle_quantization);
     float increments;
@@ -302,7 +313,6 @@ float NodeHybrid::getTraversalCost(const NodePtr &child) {
         }
     }
 
-    // 为啥当前节点的要加惩罚
     if (getMotionPrimitiveIndex() > 2) {
         // reverse direction
         travel_cost *= motion_table.reverse_penalty;
@@ -311,6 +321,7 @@ float NodeHybrid::getTraversalCost(const NodePtr &child) {
     return travel_cost;
 }
 
+// 论文中的启发值计算，取obs_h和dis_h的最大值
 float NodeHybrid::getHeuristicCost(const Coordinates &node_coords, const Coordinates &goal_coords,
                                    const nav2_costmap_2d::Costmap2D * /*costmap*/) {
     const float obstacle_heuristic = getObstacleHeuristic(node_coords, goal_coords);
@@ -419,7 +430,7 @@ float NodeHybrid::getObstacleHeuristic(const Coordinates &node_coords, const Coo
         my_idx = idx / size_x;
         mx_idx = idx - (my_idx * size_x);
 
-        // find neighbors
+        // 寻找邻居，但这里不会考虑是否能通行，而只是计算travel_cost
         for (unsigned int i = 0; i != neighborhood.size(); i++) {
             new_idx = static_cast<unsigned int>(static_cast<int>(idx) + neighborhood[i]);
             cost = static_cast<float>(sampled_costmap->getCost(idx));
@@ -429,7 +440,7 @@ float NodeHybrid::getObstacleHeuristic(const Coordinates &node_coords, const Coo
 
             // if neighbor path is better and non-lethal, set new cost and add to queue
             // 如果邻居的路径更好且不和障碍物碰撞
-            if (new_idx > 0 && new_idx < size_x * size_y && cost < 1.0) {
+            if (new_idx > 0 && new_idx < size_x * size_y && cost < 100.0) {
                 my = new_idx / size_x;
                 mx = new_idx - (my * size_x);
 
@@ -518,6 +529,7 @@ float NodeHybrid::getDistanceHeuristic(const Coordinates &node_coords, const Coo
     return motion_heuristic;
 }
 
+// 提前计算好R-S扩展的距离启发值
 void NodeHybrid::precomputeDistanceHeuristic(const float &lookup_table_dim, const MotionModel &motion_model,
                                              const unsigned int &dim_3_size, const SearchInfo &search_info) {
     // Dubin or Reeds-Shepp shortest distances
@@ -543,10 +555,11 @@ void NodeHybrid::precomputeDistanceHeuristic(const float &lookup_table_dim, cons
     float angular_bin_size = 2 * M_PI / static_cast<float>(dim_3_size);
 
     // Create a lookup table of Dubin/Reeds-Shepp distances in a window around the goal
-    // to help drive the search towards admissible approaches. Deu to symmetries in the
+    // to help drive the search towards admissible approaches. Due to symmetries in the
     // Heuristic space, we need to only store 2 of the 4 quadrants and simply mirror
     // around the X axis any relative node lookup. This reduces memory overhead and increases
     // the size of a window a platform can store in memory.
+    // 只需要储存4个象限中的两个，另外的可以关于X轴反转
     dist_heuristic_lookup_table.resize(size_lookup * ceil(size_lookup / 2.0) * dim_3_size_int);
     for (float x = ceil(-size_lookup / 2.0); x <= floor(size_lookup / 2.0); x += 1.0) {
         for (float y = 0.0; y <= floor(size_lookup / 2.0); y += 1.0) {
