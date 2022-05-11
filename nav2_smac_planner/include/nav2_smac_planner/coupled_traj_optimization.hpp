@@ -52,16 +52,21 @@ public:
 
     void operator()(ADvector& fg, const ADvector& vars) {
         fg[0] = 0;
-        // 最小化L的总和
 
+        // 最小化L的总和
         for (int i = 0; i < 2 * N; i++) {
             fg[0] += CppAD::pow(vars[L_start + i], 2);
+        }
+        // 最大化alpha角
+        for (int i = 0; i < N; i++) {
+            fg[0] += CppAD::pow(vars[theta_start + i + 1] - vars[theta_start + i], 2);
         }
         // 曲率限制
         for (int i = 0; i < N; i++) {
             AD<double> L1 = vars[L_start + 2 * i];
             AD<double> L2 = vars[L_start + 2 * i + 1];
-            AD<double> alpha = PI - CppAD::abs(vars[theta_start + i + 1] - vars[theta_start + i]);
+            AD<double> alpha =
+                PI - CppAD::abs(vars[theta_start + i + 1] - vars[theta_start + i]); // PI - (0~2PI) = -PI~PI
             fg[1 + k_con + 2 * i] =
                 2 * CppAD::sin(alpha) / 3 / L1 / CppAD::pow(CppAD::cos(alpha) * (-0.5) + 0.5, 3 / 2);
             fg[1 + k_con + 2 * i + 1] =
@@ -272,78 +277,21 @@ public:
         auto opt_node = rclcpp::Node::make_shared("optimization");
         for (int i = 0; i < 2 * N; i++) {
             std::cout << "L" << i << ":" << solution.x[L_start + i] << std::endl;
+            L_result.emplace_back(solution.x[L_start + i]);
         }
         for (int i = 0; i < N + 1; i++) {
             std::cout << "theta" << i << ":" << solution.x[theta_start + i] << std::endl;
         }
-        // 清除之前的控制点
-        auto control_point_node = rclcpp::Node::make_shared("control_point_pub_node");
-        auto control_point_publisher =
-            control_point_node->create_publisher<visualization_msgs::msg::MarkerArray>("control_point", 10);
-        visualization_msgs::msg::MarkerArray points;
-        visualization_msgs::msg::Marker apoint;
-        apoint.header.frame_id = "map";
-        apoint.header.stamp = control_point_node.get()->get_clock()->now();
-        apoint.action = visualization_msgs::msg::Marker::DELETEALL;
-        points.markers.emplace_back(apoint);
-        control_point_publisher->publish(points);
-        // 把每个控制点发布出来看一下
-        apoint.action = visualization_msgs::msg::Marker::ADD;
-        points.markers.clear();
-        apoint.type = visualization_msgs::msg::Marker::CUBE;
-        apoint.scale.x = 0.1;
-        apoint.scale.y = 0.1;
-        apoint.scale.z = 0.1;
-        apoint.color.a = 1.0;
-        apoint.color.r = 255;
-        apoint.color.g = 0;
-        apoint.color.b = 0;
         for (int i = 0; i < 2 * N + 1; i++) {
-            apoint.id = i;
-            std::cout << "x,y," << i << ":" << solution.x[x_start + i] << "," << solution.x[y_start + i] << std::endl;
-            apoint.pose.position.x = solution.x[x_start + i];
-            apoint.pose.position.y = solution.x[y_start + i];
-            points.markers.emplace_back(apoint);
+            x_result.emplace_back(solution.x[x_start + i]);
+            y_result.emplace_back(solution.x[y_start + i]);
+            std::cout << "x,y," << i << ":" << x_result[i] << "," << y_result[i] << std::endl;
         }
-        control_point_publisher->publish(points);
-        // 发布路径
-        auto opt_path = control_point_node->create_publisher<nav_msgs::msg::Path>("opt_path", 10);
-        nav_msgs::msg::Path path;
-        path.header.frame_id = "map";
-        path.header.stamp = control_point_node->get_clock()->now();
-        geometry_msgs::msg::PoseStamped pp;
-        double x_pos, y_pos;
-        vector<std::pair<double, double>> cp(5); // 控制点的x,y坐标
-        for (int box_i = 0; box_i < N; box_i++) {
-            cp[0] = std::make_pair(solution.x[x_start + 2 * box_i], solution.x[y_start + 2 * box_i]);
-            cp[1] = std::make_pair((solution.x[x_start + 2 * box_i] + solution.x[x_start + 2 * box_i + 1]) / 2,
-                                   (solution.x[y_start + 2 * box_i] + solution.x[y_start + 2 * box_i + 1]) / 2);
-            cp[2] = std::make_pair(solution.x[x_start + 2 * box_i + 1], solution.x[y_start + 2 * box_i + 1]);
-            cp[3] = std::make_pair((solution.x[x_start + 2 * box_i + 1] + solution.x[x_start + 2 * box_i + 2]) / 2,
-                                   (solution.x[y_start + 2 * box_i + 1] + solution.x[y_start + 2 * box_i + 2]) / 2);
-            cp[4] = std::make_pair(solution.x[x_start + 2 * box_i + 2], solution.x[y_start + 2 * box_i + 2]);
-            for (double t = 0; t <= 1; t += 0.01) {
-                x_pos = (1 - t) * (1 - t) * (1 - t) * (1 - t) * cp[0].first;
-                x_pos += 4 * t * (1 - t) * (1 - t) * (1 - t) * cp[1].first;
-                x_pos += 6 * t * t * (1 - t) * (1 - t) * cp[2].first;
-                x_pos += 4 * t * t * t * (1 - t) * cp[3].first;
-                x_pos += t * t * t * t * cp[4].first;
-                y_pos = (1 - t) * (1 - t) * (1 - t) * (1 - t) * cp[0].second;
-                y_pos += 4 * t * (1 - t) * (1 - t) * (1 - t) * cp[1].second;
-                y_pos += 6 * t * t * (1 - t) * (1 - t) * cp[2].second;
-                y_pos += 4 * t * t * t * (1 - t) * cp[3].second;
-                y_pos += t * t * t * t * cp[4].second;
-                pp.pose.position.x = x_pos;
-                pp.pose.position.y = y_pos;
-                path.poses.emplace_back(pp);
-            }
-        }
-        opt_path->publish(path);
         // std::cout << "solve done" << std::endl;
         return true;
     }
 
-    bool update() {
+    bool update(bool allow_prune) {
         // 主函数，进行路径优化
         N = SFC.size();
         set_offset(N);
@@ -353,7 +301,31 @@ public:
                 SFC.emplace_back(SFC.back());
                 N++;
                 set_offset(N);
-                Solve();
+                if (!Solve()) return false;
+            } else {
+                return false;
+            }
+        }
+        pub("control_point", "opt_path");
+        // 剪枝
+        if (allow_prune) {
+            bool need_prune = false;
+            SFC_t SFC_tmp(SFC);
+            SFC.clear();
+            for (int i = 0; i < N; i++) {
+                if (std::abs(L_result[2 * i]) < 0.2 && std::abs(L_result[2 * i + 1]) < 0.2) {
+                    need_prune = true;
+                } else {
+                    SFC.emplace_back(SFC_tmp[i]);
+                }
+            }
+            if (need_prune) {
+                N = SFC.size();
+                set_offset(N);
+                L_result.clear();
+                x_result.clear();
+                y_result.clear();
+                if (Solve()) pub("control_point", "opt_path_after_prune");
             }
         }
         // std::cout << "out of solve" << std::endl;
@@ -380,6 +352,71 @@ public:
         y_con = x_con + 2 * N;
     }
 
+    void pub(string cp_topic, string path_topic) {
+        // 清除之前的控制点
+        auto control_point_node = rclcpp::Node::make_shared("control_point_pub_node");
+        auto control_point_publisher =
+            control_point_node->create_publisher<visualization_msgs::msg::MarkerArray>(cp_topic, 10);
+        visualization_msgs::msg::MarkerArray points;
+        visualization_msgs::msg::Marker apoint;
+        apoint.header.frame_id = "map";
+        apoint.header.stamp = control_point_node.get()->get_clock()->now();
+        apoint.action = visualization_msgs::msg::Marker::DELETEALL;
+        points.markers.emplace_back(apoint);
+        control_point_publisher->publish(points);
+        // 把每个控制点发布出来看一下
+        apoint.action = visualization_msgs::msg::Marker::ADD;
+        points.markers.clear();
+        apoint.type = visualization_msgs::msg::Marker::CUBE;
+        apoint.scale.x = 0.1;
+        apoint.scale.y = 0.1;
+        apoint.scale.z = 0.1;
+        apoint.color.a = 1.0;
+        apoint.color.r = 255;
+        apoint.color.g = 0;
+        apoint.color.b = 0;
+        for (int i = 0; i < 2 * N + 1; i++) {
+            apoint.id = i;
+            apoint.pose.position.x = x_result[i];
+            apoint.pose.position.y = y_result[i];
+            points.markers.emplace_back(apoint);
+        }
+        control_point_publisher->publish(points);
+        // 发布路径
+        auto opt_path = control_point_node->create_publisher<nav_msgs::msg::Path>(path_topic, 10);
+        nav_msgs::msg::Path path;
+        path.header.frame_id = "map";
+        path.header.stamp = control_point_node->get_clock()->now();
+        geometry_msgs::msg::PoseStamped pp;
+        double x_pos, y_pos;
+        vector<std::pair<double, double>> cp(5); // 控制点的x,y坐标
+        for (int box_i = 0; box_i < N; box_i++) {
+            cp[0] = std::make_pair(x_result[2 * box_i], y_result[2 * box_i]);
+            cp[1] = std::make_pair((x_result[2 * box_i] + x_result[2 * box_i + 1]) / 2,
+                                   (y_result[2 * box_i] + y_result[2 * box_i + 1]) / 2);
+            cp[2] = std::make_pair(x_result[2 * box_i + 1], y_result[2 * box_i + 1]);
+            cp[3] = std::make_pair((x_result[2 * box_i + 1] + x_result[2 * box_i + 2]) / 2,
+                                   (y_result[2 * box_i + 1] + y_result[2 * box_i + 2]) / 2);
+            cp[4] = std::make_pair(x_result[2 * box_i + 2], y_result[2 * box_i + 2]);
+            for (double t = 0; t <= 1; t += 0.01) {
+                x_pos = (1 - t) * (1 - t) * (1 - t) * (1 - t) * cp[0].first;
+                x_pos += 4 * t * (1 - t) * (1 - t) * (1 - t) * cp[1].first;
+                x_pos += 6 * t * t * (1 - t) * (1 - t) * cp[2].first;
+                x_pos += 4 * t * t * t * (1 - t) * cp[3].first;
+                x_pos += t * t * t * t * cp[4].first;
+                y_pos = (1 - t) * (1 - t) * (1 - t) * (1 - t) * cp[0].second;
+                y_pos += 4 * t * (1 - t) * (1 - t) * (1 - t) * cp[1].second;
+                y_pos += 6 * t * t * (1 - t) * (1 - t) * cp[2].second;
+                y_pos += 4 * t * t * t * (1 - t) * cp[3].second;
+                y_pos += t * t * t * t * cp[4].second;
+                pp.pose.position.x = x_pos;
+                pp.pose.position.y = y_pos;
+                path.poses.emplace_back(pp);
+            }
+        }
+        opt_path->publish(path);
+    }
+
 private:
     std::shared_ptr<Corridor> corridor_obj;
     std::shared_ptr<nav_msgs::msg::Path> initTrajPlanner_obj;
@@ -387,4 +424,6 @@ private:
     nav_msgs::msg::Path initTraj;
     SFC_t SFC;
     int N;
+    vector<double> L_result;
+    vector<double> x_result, y_result;
 };

@@ -90,13 +90,16 @@ public:
      */
     bool inCollision(const float &x, const float &y, const float &theta, const bool &traverse_unknown) {
         // Assumes setFootprint already set
-        double wx, wy;
-        costmap_->mapToWorld(static_cast<double>(x), static_cast<double>(y), wx, wy);
+        // double wx, wy;
+        unsigned int wx, wy;
+        // costmap_->mapToWorld(static_cast<double>(x), static_cast<double>(y), wx, wy);
+        costmap_->worldToMap(static_cast<double>(x), static_cast<double>(y), wx, wy);
 
         if (!footprint_is_radius_) {
             // if footprint, then we check for the footprint's points, but first see
             // if the robot is even potentially in an inscribed collision
-            footprint_cost_ = costmap_->getCost(static_cast<unsigned int>(x), static_cast<unsigned int>(y));
+            // footprint_cost_ = costmap_->getCost(static_cast<unsigned int>(x), static_cast<unsigned int>(y));
+            footprint_cost_ = costmap_->getCost(wx, wy);
 
             if (footprint_cost_ < possible_inscribed_cost_) {
                 return false;

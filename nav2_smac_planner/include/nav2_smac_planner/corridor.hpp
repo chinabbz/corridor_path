@@ -10,6 +10,8 @@
 #define SP_EPSILON_FLOAT 1e-6
 #define SP_INFINITY 1e+9
 
+const double robot_radius = 0.3;
+
 struct Point {
     Point(double x_, double y_) : x(x_), y(y_){};
     double x;
@@ -51,7 +53,7 @@ private:
                 // 因为有膨胀层的存在，所以只要有代价，就认为有碰撞风险
                 unsigned int mx, my;
                 costmap_obj.get()->worldToMap(x, y, mx, my);
-                if (costmap_obj.get()->getCost(mx, my) > 0) {
+                if (costmap_obj.get()->getCost(mx, my) == 254) {
                     return true;
                 }
             }
@@ -74,7 +76,7 @@ private:
                 // 因为有膨胀层的存在，所以只要有代价，就认为有碰撞风险
                 unsigned int mx, my;
                 costmap_obj.get()->worldToMap(x, y, mx, my);
-                if (costmap_obj.get()->getCost(mx, my) > 0) {
+                if (costmap_obj.get()->getCost(mx, my) == 254) {
                     return true;
                 }
             }
@@ -226,6 +228,10 @@ private:
             }
             if (SFC.size() > 0) SFC.back().second *= i - 1;
             // box加入到走廊
+            box[0] += robot_radius;
+            box[1] += robot_radius;
+            box[2] -= robot_radius;
+            box[3] -= robot_radius;
             SFC.emplace_back(std::make_pair(box, 0)); // SFC元素的second表示该box中最后一个路径点的index
             if (for_or_back[i]) {
                 SFC.back().second = 1;

@@ -192,7 +192,7 @@ protected:
     inline void addNode(const float &cost, NodePtr &node);
 
     /**
-     * @brief Adds node to graph
+     * @brief 将节点加入graph中
      * @param cost The cost to sort into the open set of the node
      * @param node Node pointer reference to add to open set
      */

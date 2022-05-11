@@ -378,8 +378,8 @@ nav_msgs::msg::Path SmacPlannerHybrid::createPlan(const geometry_msgs::msg::Pose
 
         unsigned int mx, my;
         costmap->worldToMap(now_x, now_y, mx, my);
-        std::cout << i << ":(" << now_x << "," << now_y << "):" << static_cast<int>(costmap->getCost(mx, my))
-                  << std::endl;
+        std::cout << i << ":(" << now_x << "," << now_y << "," << now_yaw
+                  << "):" << static_cast<int>(costmap->getCost(mx, my)) << std::endl;
         // 判断是前进还是后退
         if (now_yaw >= -M_PI_4 && now_yaw <= M_PI_4) { // 朝向x正方向
             if (plan.poses[i + 1].pose.position.x > now_x)
@@ -447,7 +447,7 @@ nav_msgs::msg::Path SmacPlannerHybrid::createPlan(const geometry_msgs::msg::Pose
         abox.scale.x = corridor_obj.get()->SFC[i].first[2] - corridor_obj.get()->SFC[i].first[0];
         abox.scale.y = corridor_obj.get()->SFC[i].first[3] - corridor_obj.get()->SFC[i].first[1];
         abox.scale.z = 0.1;
-        abox.color.a = 0.5;
+        abox.color.a = 0.2;
         // color
         if (i % 4 == 0) {
             abox.color.r = 255;
@@ -481,7 +481,7 @@ nav_msgs::msg::Path SmacPlannerHybrid::createPlan(const geometry_msgs::msg::Pose
     std::cout << "ready to optimization" << std::endl;
     std::shared_ptr<MPCPlanner> MPCPlanner_obj; // 轨迹优化
     MPCPlanner_obj.reset(new MPCPlanner(corridor_obj, std::make_shared<nav_msgs::msg::Path>(plan)));
-    MPCPlanner_obj.get()->update();
+    MPCPlanner_obj.get()->update(true);
     return plan;
 } // namespace nav2_smac_planner
 

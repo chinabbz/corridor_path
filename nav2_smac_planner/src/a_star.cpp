@@ -191,6 +191,7 @@ bool AStarAlgorithm<NodeT>::createPath(CoordinateVector& path, int& iterations, 
 
     // Given an index, return a node ptr reference if its collision-free and valid
     // 索引值转节点的指针（并检查是否可通行）
+    // lambda表达式，实际上这里的neighbor_rtn还是index这个节点，扩展得到的neighbor在后面的getNeighbors
     const unsigned int max_index = getSizeX() * getSizeY() * getSizeDim3();
     NodeGetter neighborGetter = [&, this](const unsigned int& index, NodePtr& neighbor_rtn) -> bool {
         if (index < 0 || index >= max_index) {
