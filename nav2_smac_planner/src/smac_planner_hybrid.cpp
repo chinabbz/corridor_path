@@ -419,7 +419,7 @@ nav_msgs::msg::Path SmacPlannerHybrid::createPlan(const geometry_msgs::msg::Pose
     }
     reverse_publisher->publish(points);
 
-    steady_clock::time_point c = steady_clock::now();
+    // steady_clock::time_point c = steady_clock::now();
 
     // 建立走廊
     std::shared_ptr<Corridor> corridor_obj; // 走廊
@@ -481,6 +481,7 @@ nav_msgs::msg::Path SmacPlannerHybrid::createPlan(const geometry_msgs::msg::Pose
     corridor_publisher->publish(boxes);
     // 优化
     std::cout << "ready to optimization" << std::endl;
+    steady_clock::time_point c = steady_clock::now();
     std::shared_ptr<MPCPlanner> MPCPlanner_obj; // 轨迹优化
     MPCPlanner_obj.reset(new MPCPlanner(corridor_obj, std::make_shared<nav_msgs::msg::Path>(plan)));
     if (MPCPlanner_obj.get()->update(true, plan)) {

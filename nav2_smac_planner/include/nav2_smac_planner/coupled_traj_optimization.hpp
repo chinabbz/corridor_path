@@ -5,6 +5,7 @@
 #include <sstream>
 #include <stdio.h>
 #include <string.h>
+#include <chrono>
 
 // ROS
 #include <std_msgs/msg/float64_multi_array.hpp>
@@ -106,6 +107,7 @@ public:
 
     bool Solve() {
         RCLCPP_INFO(opt_node->get_logger(), "solve begin");
+        std::chrono::steady_clock::time_point a = std::chrono::steady_clock::now();
         bool ok = true;
         size_t i;
         typedef CPPAD_TESTVECTOR(double) Dvector;
@@ -238,8 +240,8 @@ public:
         options += "String linear_solver ma27\n";
         // Uncomment this if you'd like more print information
         options += "Integer print_level  3\n";
-        options += "Integer max_iter  50\n";
-        options += "Numeric max_wall_time 1e-1\n";
+        options += "Integer max_iter  500\n";
+        options += "Numeric max_cpu_time 5e-2\n";
         // NOTE: Setting sparse to true allows the solver to take advantage
         // of sparse routines, this makes the computation MUCH FASTER. If you
         // can uncomment 1 of these and see if it makes a difference or not but
@@ -252,6 +254,7 @@ public:
 
         // place to return solution
         CppAD::ipopt::solve_result<Dvector> solution;
+        std::chrono::steady_clock::time_point b = std::chrono::steady_clock::now();
 
         // 求解！
         // option：求解选项
@@ -262,6 +265,11 @@ public:
         CppAD::ipopt::solve<Dvector, FG_eval>(options, vars, vars_lowerbound, vars_upperbound, constraints_lowerbound,
                                               constraints_upperbound, fg_eval, solution);
 
+        std::chrono::steady_clock::time_point c = std::chrono::steady_clock::now();
+        std::chrono::duration<double> time_span = std::chrono::duration_cast<std::chrono::duration<double>>(b - a);
+        std::cout << "The time for vars set:" << time_span.count() * 1000 << std::endl;
+        time_span = std::chrono::duration_cast<std::chrono::duration<double>>(c - b);
+        std::cout << "The time for solve:" << time_span.count() * 1000 << std::endl;
         // Check some of the solution values
         ok &= solution.status == CppAD::ipopt::solve_result<Dvector>::success;
         if (ok) {
@@ -273,7 +281,9 @@ public:
             return false;
         }
 
-        auto opt_node = rclcpp::Node::make_shared("optimization");
+        L_result.clear();
+        x_result.clear();
+        y_result.clear();
         for (int i = 0; i < 2 * N; i++) {
             std::cout << "L" << i << ":" << solution.x[L_start + i] << std::endl;
             L_result.emplace_back(solution.x[L_start + i]);
@@ -302,8 +312,10 @@ public:
                 set_offset(N);
                 if (!Solve())
                     return false;
-                else
+                else {
                     pub("control_point", "opt_path", plan);
+                    return true;
+                }
             } else {
                 if (allow_prune) {
                     bool need_prune = false;
@@ -326,9 +338,6 @@ public:
                     if (need_prune) {
                         N = SFC.size();
                         set_offset(N);
-                        L_result.clear();
-                        x_result.clear();
-                        y_result.clear();
                         if (Solve()) {
                             pub("control_point", "opt_path", plan);
                             return true;
@@ -362,9 +371,6 @@ public:
                 if (need_prune) {
                     N = SFC.size();
                     set_offset(N);
-                    L_result.clear();
-                    x_result.clear();
-                    y_result.clear();
                     if (Solve()) pub("control_point", "opt_path", plan);
                 }
             }
@@ -393,9 +399,8 @@ public:
     }
 
     void pub(string cp_topic, string path_topic, nav_msgs::msg::Path& plan) {
-        std::cout << "ready to pub" << std::endl;
         // 清除之前的控制点
-        auto control_point_node = rclcpp::Node::make_shared("control_point_pub_node");
+
         auto control_point_publisher =
             control_point_node->create_publisher<visualization_msgs::msg::MarkerArray>(cp_topic, 10);
         visualization_msgs::msg::MarkerArray points;
@@ -432,7 +437,9 @@ public:
         geometry_msgs::msg::PoseStamped pp;
         double x_pos, y_pos, L;
         vector<std::pair<double, double>> cp(5); // 控制点的x,y坐标
+
         for (int box_i = 0; box_i < N; box_i++) {
+            std::cout << "box_i:" << box_i << std::endl;
             cp[0] = std::make_pair(x_result[2 * box_i], y_result[2 * box_i]);
             cp[1] = std::make_pair((x_result[2 * box_i] + x_result[2 * box_i + 1]) / 2,
                                    (y_result[2 * box_i] + y_result[2 * box_i + 1]) / 2);
@@ -440,7 +447,7 @@ public:
             cp[3] = std::make_pair((x_result[2 * box_i + 1] + x_result[2 * box_i + 2]) / 2,
                                    (y_result[2 * box_i + 1] + y_result[2 * box_i + 2]) / 2);
             cp[4] = std::make_pair(x_result[2 * box_i + 2], y_result[2 * box_i + 2]);
-            L = L_result[2 * box_i] + L_result[2 * box_i + 1];
+            L = std::abs(L_result[2 * box_i]) + std::abs(L_result[2 * box_i + 1]);
             for (double t = 0; t <= 1; t += 0.6 / L) {
                 x_pos = (1 - t) * (1 - t) * (1 - t) * (1 - t) * cp[0].first;
                 x_pos += 4 * t * (1 - t) * (1 - t) * (1 - t) * cp[1].first;
@@ -454,6 +461,7 @@ public:
                 y_pos += t * t * t * t * cp[4].second;
                 pp.pose.position.x = x_pos;
                 pp.pose.position.y = y_pos;
+                // std::cout << "x_pos:" << x_pos << ",y_pos:" << y_pos << std::endl;
                 plan.poses.emplace_back(pp);
             }
         }
@@ -463,6 +471,7 @@ public:
 private:
     std::shared_ptr<Corridor> corridor_obj;
     std::shared_ptr<nav_msgs::msg::Path> initTrajPlanner_obj;
+    rclcpp::Node::SharedPtr control_point_node = rclcpp::Node::make_shared("control_point_pub_node");
 
     nav_msgs::msg::Path initTraj;
     SFC_t SFC;
