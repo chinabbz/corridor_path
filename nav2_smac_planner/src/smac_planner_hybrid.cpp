@@ -117,13 +117,15 @@ void SmacPlannerHybrid::configure(const rclcpp_lifecycle::LifecycleNode::WeakPtr
     const double minimum_turning_radius_global_coords = _search_info.minimum_turning_radius;
     // 最小转弯半径
     // _search_info.minimum_turning_radius = _search_info.minimum_turning_radius / _downsampling_factor;
+    RCLCPP_INFO(_logger, "!!!!minimum_turning_radius is: %.4f, costmap resolution is %.4f, downsampe parameter is %.4f",
+                _search_info.minimum_turning_radius, _costmap->getResolution(), _downsampling_factor);
     _search_info.minimum_turning_radius =
         _search_info.minimum_turning_radius / (_costmap->getResolution() * _downsampling_factor);
     _lookup_table_dim = static_cast<float>(_lookup_table_size) / _downsampling_factor;
     // _lookup_table_dim =
-    //     static_cast<float>(_lookup_table_size) / static_cast<float>(_costmap->getResolution() *
-    //     _downsampling_factor);
-    RCLCPP_INFO(_logger, "minimum_turning_radius is: %f", _search_info.minimum_turning_radius);
+    // static_cast<float>(_lookup_table_size) / static_cast<float>(_costmap->getResolution() * _downsampling_factor);
+    RCLCPP_INFO(_logger, "!!!!minimum_turning_radius is: %.4f, costmap resolution is %.4f, downsampe parameter is %.4f",
+                _search_info.minimum_turning_radius, _costmap->getResolution(), _downsampling_factor);
 
     // Make sure its a whole number
     _lookup_table_dim = static_cast<float>(static_cast<int>(_lookup_table_dim));
@@ -417,6 +419,8 @@ nav_msgs::msg::Path SmacPlannerHybrid::createPlan(const geometry_msgs::msg::Pose
     }
     reverse_publisher->publish(points);
 
+    steady_clock::time_point c = steady_clock::now();
+
     // 建立走廊
     std::shared_ptr<Corridor> corridor_obj; // 走廊
     corridor_obj.reset(new Corridor(std::make_shared<nav_msgs::msg::Path>(plan),
@@ -424,8 +428,6 @@ nav_msgs::msg::Path SmacPlannerHybrid::createPlan(const geometry_msgs::msg::Pose
     if (!corridor_obj.get()->update(for_or_back)) {
         RCLCPP_ERROR(_logger, "no corridor!!!");
     }
-    // corridor_obj.get()->SFC.emplace_back(corridor_obj.get()->SFC.back());
-    // corridor_obj.get()->SFC.back().second = -1;
     // 清除之前的走廊
     auto corridor_publisher = corridor_node->create_publisher<visualization_msgs::msg::MarkerArray>("corridor", 10);
     visualization_msgs::msg::MarkerArray boxes;
@@ -481,7 +483,21 @@ nav_msgs::msg::Path SmacPlannerHybrid::createPlan(const geometry_msgs::msg::Pose
     std::cout << "ready to optimization" << std::endl;
     std::shared_ptr<MPCPlanner> MPCPlanner_obj; // 轨迹优化
     MPCPlanner_obj.reset(new MPCPlanner(corridor_obj, std::make_shared<nav_msgs::msg::Path>(plan)));
-    MPCPlanner_obj.get()->update(true);
+    if (MPCPlanner_obj.get()->update(true, plan)) {
+        tf2::Quaternion q;
+        for (int i = 0; i < plan.poses.size() - 1; i++) {
+            float yaw = atan2(plan.poses[i + 1].pose.position.y - plan.poses[i].pose.position.y,
+                              plan.poses[i + 1].pose.position.x - plan.poses[i].pose.position.x);
+
+            q.setRPY(0, 0, yaw);
+            plan.poses[i].pose.set__orientation(tf2::toMsg(q));
+        }
+        plan.poses.back().pose.set__orientation(tf2::toMsg(q));
+    }
+
+    steady_clock::time_point d = steady_clock::now();
+    duration<double> time_span_corridor = duration_cast<duration<double>>(d - c);
+    std::cout << "It took " << time_span_corridor.count() * 1000 << " milliseconds to smooth path." << std::endl;
     return plan;
 } // namespace nav2_smac_planner
 
@@ -577,8 +593,8 @@ void SmacPlannerHybrid::on_parameter_event_callback(const rcl_interfaces::msg::P
             _downsampling_factor = 1;
         }
         const double minimum_turning_radius_global_coords = _search_info.minimum_turning_radius;
-        _search_info.minimum_turning_radius = _search_info.minimum_turning_radius / _downsampling_factor;
-        // _search_info.minimum_turning_radius / (_costmap->getResolution() * _downsampling_factor);
+        // _search_info.minimum_turning_radius = _search_info.minimum_turning_radius / _downsampling_factor;
+        _search_info.minimum_turning_radius / (_costmap->getResolution() * _downsampling_factor);
         _lookup_table_dim = static_cast<float>(_lookup_table_size) / _downsampling_factor;
         // static_cast<float>(_costmap->getResolution() * _downsampling_factor);
 

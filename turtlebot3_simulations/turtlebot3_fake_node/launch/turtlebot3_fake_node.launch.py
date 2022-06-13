@@ -49,7 +49,7 @@ def generate_launch_description():
         urdf_file_name)
 
     bringup_dir = get_package_share_directory('nav2_bringup')
-    f = open(os.path.join(bringup_dir, 'params', 'task9.json'))
+    f = open(os.path.join(os.getcwd(), 'task9/task9.json'),)
     task_params = json.load(f)
     start_params= task_params["Start"]
 

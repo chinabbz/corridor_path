@@ -34,7 +34,7 @@
 
 using CppAD::AD;
 
-#define KMAX 0.6 // 曲率<0.5
+#define KMAX 1.0 // 曲率<0.5
 
 size_t x_start;
 size_t y_start;
@@ -67,10 +67,8 @@ public:
             AD<double> L2 = vars[L_start + 2 * i + 1];
             AD<double> alpha =
                 PI - CppAD::abs(vars[theta_start + i + 1] - vars[theta_start + i]); // PI - (0~2PI) = -PI~PI
-            fg[1 + k_con + 2 * i] =
-                2 * CppAD::sin(alpha) / 3 / L1 / CppAD::pow(CppAD::cos(alpha) * (-0.5) + 0.5, 3 / 2);
-            fg[1 + k_con + 2 * i + 1] =
-                2 * CppAD::sin(alpha) / 3 / L2 / CppAD::pow(CppAD::cos(alpha) * (-0.5) + 0.5, 3 / 2);
+            fg[1 + k_con + 2 * i] = 6 * CppAD::sin(alpha) / L1 / CppAD::pow(2 - CppAD::cos(alpha) * 2, 3 / 2);
+            fg[1 + k_con + 2 * i + 1] = 6 * CppAD::sin(alpha) / 3 / L2 / CppAD::pow(2 - CppAD::cos(alpha) * 2, 3 / 2);
         }
         // x,y限制
         for (int i = 0; i < 2 * N; i++) {
@@ -240,7 +238,8 @@ public:
         options += "String linear_solver ma27\n";
         // Uncomment this if you'd like more print information
         options += "Integer print_level  3\n";
-        options += "Integer max_iter  4000\n";
+        options += "Integer max_iter  50\n";
+        options += "Numeric max_wall_time 1e-1\n";
         // NOTE: Setting sparse to true allows the solver to take advantage
         // of sparse routines, this makes the computation MUCH FASTER. If you
         // can uncomment 1 of these and see if it makes a difference or not but
@@ -291,44 +290,85 @@ public:
         return true;
     }
 
-    bool update(bool allow_prune) {
+    bool update(bool allow_prune, nav_msgs::msg::Path& plan) {
         // 主函数，进行路径优化
         N = SFC.size();
         set_offset(N);
         // std::cout << "before solve" << std::endl;
         if (!Solve()) {
-            if (N == 1) {
+            if (N == 1 || (N == 2 && boxEqual(SFC[0].first, SFC[1].first, corridor_obj.get()->costmap_obj))) {
                 SFC.emplace_back(SFC.back());
                 N++;
                 set_offset(N);
-                if (!Solve()) return false;
+                if (!Solve())
+                    return false;
+                else
+                    pub("control_point", "opt_path", plan);
             } else {
-                return false;
-            }
-        }
-        pub("control_point", "opt_path");
-        // 剪枝
-        if (allow_prune) {
-            bool need_prune = false;
-            SFC_t SFC_tmp(SFC);
-            SFC.clear();
-            for (int i = 0; i < N; i++) {
-                if (std::abs(L_result[2 * i]) < 0.2 && std::abs(L_result[2 * i + 1]) < 0.2) {
-                    need_prune = true;
+                if (allow_prune) {
+                    bool need_prune = false;
+                    SFC_t SFC_tmp(SFC);
+                    SFC.clear();
+                    SFC.emplace_back(SFC_tmp[0]);
+                    for (int i = 1; i < N - 1; i++) {
+                        // 当前box和上一个以及下一个都相同
+                        if (boxEqual(SFC_tmp[i].first, SFC_tmp[i - 1].first, corridor_obj.get()->costmap_obj) &&
+                            boxEqual(SFC_tmp[i].first, SFC_tmp[i + 1].first, corridor_obj.get()->costmap_obj)) {
+                            need_prune = true;
+                            i++;
+                            continue;
+                        } else {
+                            SFC.emplace_back(SFC_tmp[i]);
+                        }
+                    }
+                    SFC.emplace_back(SFC_tmp[N - 1]);
+
+                    if (need_prune) {
+                        N = SFC.size();
+                        set_offset(N);
+                        L_result.clear();
+                        x_result.clear();
+                        y_result.clear();
+                        if (Solve()) {
+                            pub("control_point", "opt_path", plan);
+                            return true;
+                        } else {
+                            return false;
+                        }
+                    }
                 } else {
-                    SFC.emplace_back(SFC_tmp[i]);
+                    return false;
                 }
             }
-            if (need_prune) {
-                N = SFC.size();
-                set_offset(N);
-                L_result.clear();
-                x_result.clear();
-                y_result.clear();
-                if (Solve()) pub("control_point", "opt_path_after_prune");
+        } else {
+            pub("control_point", "opt_path", plan);
+            // 剪枝
+            if (allow_prune) {
+                bool need_prune = false;
+                SFC_t SFC_tmp(SFC);
+                SFC.clear();
+                for (int i = 0; i < N; i++) {
+                    if (std::abs(L_result[2 * i]) < 0.2 && std::abs(L_result[2 * i + 1]) < 0.2) {
+                        need_prune = true;
+                        continue;
+                    }
+                    if (i > 0 && SFC.size() > 0 && SFC_tmp[i].second * SFC.back().second > 0 && //同方向
+                        boxEqual(SFC_tmp[i].first, SFC.back().first, corridor_obj.get()->costmap_obj)) {
+                        need_prune = true;
+                        continue;
+                    }
+                    SFC.emplace_back(SFC_tmp[i]);
+                }
+                if (need_prune) {
+                    N = SFC.size();
+                    set_offset(N);
+                    L_result.clear();
+                    x_result.clear();
+                    y_result.clear();
+                    if (Solve()) pub("control_point", "opt_path", plan);
+                }
             }
         }
-        // std::cout << "out of solve" << std::endl;
 
         return true;
     }
@@ -352,7 +392,8 @@ public:
         y_con = x_con + 2 * N;
     }
 
-    void pub(string cp_topic, string path_topic) {
+    void pub(string cp_topic, string path_topic, nav_msgs::msg::Path& plan) {
+        std::cout << "ready to pub" << std::endl;
         // 清除之前的控制点
         auto control_point_node = rclcpp::Node::make_shared("control_point_pub_node");
         auto control_point_publisher =
@@ -384,11 +425,12 @@ public:
         control_point_publisher->publish(points);
         // 发布路径
         auto opt_path = control_point_node->create_publisher<nav_msgs::msg::Path>(path_topic, 10);
-        nav_msgs::msg::Path path;
-        path.header.frame_id = "map";
-        path.header.stamp = control_point_node->get_clock()->now();
+
+        plan.poses.clear();
+        plan.header.frame_id = "map";
+        plan.header.stamp = control_point_node->get_clock()->now();
         geometry_msgs::msg::PoseStamped pp;
-        double x_pos, y_pos;
+        double x_pos, y_pos, L;
         vector<std::pair<double, double>> cp(5); // 控制点的x,y坐标
         for (int box_i = 0; box_i < N; box_i++) {
             cp[0] = std::make_pair(x_result[2 * box_i], y_result[2 * box_i]);
@@ -398,7 +440,8 @@ public:
             cp[3] = std::make_pair((x_result[2 * box_i + 1] + x_result[2 * box_i + 2]) / 2,
                                    (y_result[2 * box_i + 1] + y_result[2 * box_i + 2]) / 2);
             cp[4] = std::make_pair(x_result[2 * box_i + 2], y_result[2 * box_i + 2]);
-            for (double t = 0; t <= 1; t += 0.01) {
+            L = L_result[2 * box_i] + L_result[2 * box_i + 1];
+            for (double t = 0; t <= 1; t += 0.6 / L) {
                 x_pos = (1 - t) * (1 - t) * (1 - t) * (1 - t) * cp[0].first;
                 x_pos += 4 * t * (1 - t) * (1 - t) * (1 - t) * cp[1].first;
                 x_pos += 6 * t * t * (1 - t) * (1 - t) * cp[2].first;
@@ -411,10 +454,10 @@ public:
                 y_pos += t * t * t * t * cp[4].second;
                 pp.pose.position.x = x_pos;
                 pp.pose.position.y = y_pos;
-                path.poses.emplace_back(pp);
+                plan.poses.emplace_back(pp);
             }
         }
-        opt_path->publish(path);
+        opt_path->publish(plan);
     }
 
 private:

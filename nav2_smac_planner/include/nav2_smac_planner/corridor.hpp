@@ -18,11 +18,33 @@ struct Point {
     double y;
 };
 
-typedef std::vector<std::pair<std::vector<double>, double>> SFC_t;
+typedef std::vector<std::pair<std::vector<double>, int>> SFC_t;
+
+// 只要一个box在另一个内部，就认为是同一个，只判断边界，不判断方向
+bool boxEqual(std::vector<double> box1, std::vector<double> box2,
+              std::shared_ptr<nav2_costmap_2d::Costmap2D> _costmap_obj) {
+    std::vector<unsigned int> box_int1(4, 0), box_int2(4, 0);
+    int res = _costmap_obj.get()->getResolution();
+    _costmap_obj.get()->worldToMap(box1[0], box1[1], box_int1[0], box_int1[1]);
+    _costmap_obj.get()->worldToMap(box1[2], box1[3], box_int1[2], box_int1[3]);
+    _costmap_obj.get()->worldToMap(box2[0], box2[1], box_int2[0], box_int2[1]);
+    _costmap_obj.get()->worldToMap(box2[2], box2[3], box_int2[2], box_int2[3]);
+    // 判断1是否在2内
+    if (box_int1[0] >= box_int2[0] - res && box_int1[1] >= box_int2[1] - res && box_int1[2] <= box_int2[2] + res &&
+        box_int1[3] <= box_int2[3] + res) {
+        return true;
+    }
+    if (box_int2[0] >= box_int1[0] - res && box_int2[1] >= box_int1[1] - res && box_int2[2] <= box_int1[2] + res &&
+        box_int2[3] <= box_int1[3] + res) {
+        return true;
+    }
+    return false;
+}
 
 class Corridor {
 public:
-    SFC_t SFC; // 安全走廊
+    SFC_t SFC;                                               // 安全走廊
+    std::shared_ptr<nav2_costmap_2d::Costmap2D> costmap_obj; // 地图
 
     // 初始化函数，
     Corridor(std::shared_ptr<nav_msgs::msg::Path> _initTrajPlanner_obj,
@@ -36,8 +58,6 @@ public:
 
 private:
     std::shared_ptr<nav_msgs::msg::Path> initTrajPlanner_obj; // 初始路径
-    std::shared_ptr<nav2_costmap_2d::Costmap2D> costmap_obj;  // 地图
-
     nav_msgs::msg::Path initTraj;
     int N;
 
@@ -127,6 +147,7 @@ private:
         for (double bound : box) {
             box_int.emplace_back(round(bound / res)); //将原来的边界转化为以res为步长的整形边界
         }
+        std::vector<int> box_initial(box_int);
         std::vector<int> box_update;
         std::vector<bool> axis_cand(4, true); // 左下右上
         int left_axis = 4;
@@ -170,6 +191,11 @@ private:
             if (isBoxInBoundary(box_update) && !isObstacleInBox(box_update)) {
                 box_int[i] = box_update[i];
             } else {
+                axis_cand[i] = false;
+                left_axis--;
+            }
+            // 看看是否扩展过大了
+            if (std::abs(box_int[i] - box_initial[i]) * res > 5) {
                 axis_cand[i] = false;
                 left_axis--;
             }
@@ -222,16 +248,23 @@ private:
                 box.emplace_back(round(y_next));
             }
             if (!expand_box(box)) continue;
-
-            if (box[2] == box[0] || box[3] == box[1]) { // 如果扩展之后还是一个点
-                continue;
-            }
-            if (SFC.size() > 0) SFC.back().second *= i - 1;
-            // box加入到走廊
             box[0] += robot_radius;
             box[1] += robot_radius;
             box[2] -= robot_radius;
             box[3] -= robot_radius;
+
+            // 如果扩展之后还是一个点
+            if (box[2] == box[0] || box[3] == box[1]) {
+                continue;
+            }
+            // 如果两个box相等
+            if (SFC.size() > 0 && for_or_back[i] == for_or_back[i - 1] &&
+                boxEqual(box, SFC.back().first, costmap_obj)) {
+                continue;
+            }
+            if (SFC.size() > 0) SFC.back().second *= i - 1;
+            // box加入到走廊
+
             SFC.emplace_back(std::make_pair(box, 0)); // SFC元素的second表示该box中最后一个路径点的index
             if (for_or_back[i]) {
                 SFC.back().second = 1;
